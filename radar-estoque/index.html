@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Radar de Estoque & Reposição B2B</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>
     if (window.pdfjsLib) {
@@ -263,8 +263,24 @@
       return Number.isFinite(n) ? n : 0;
     }
 
-    // Dispara download de um Blob
-    function baixarArquivo(conteudo, tipo, nome) {
+    // Quando aberto como Artifact no claude.ai, downloads passam pela capability "downloads"
+    let downloadsApi = null;
+    if (window.claude && typeof window.claude.use === 'function') {
+      window.claude.use('downloads').then(d => { downloadsApi = d; }).catch(() => {});
+    }
+
+    // Dispara download (via claude.ai quando disponível, senão link Blob local).
+    // Retorna false se o formato não é aceito pelo claude.ai.
+    async function baixarArquivo(conteudo, tipo, nome) {
+      if (downloadsApi) {
+        try {
+          await downloadsApi.save({ filename: nome, data: conteudo });
+        } catch (err) {
+          if (err && err.code === 'rejected_extension') return false;
+          if (err && err.code !== 'declined') alert('Não foi possível baixar o arquivo: ' + (err.message || err.code));
+        }
+        return true;
+      }
       const blob = new Blob([conteudo], { type: tipo });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -274,6 +290,7 @@
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return true;
     }
 
     // Navegação entre abas
@@ -757,7 +774,7 @@
     }
 
     // Gerar XML Modelo para Teste de Upload
-    function baixarXmlModelo() {
+    async function baixarXmlModelo() {
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <posicao_estoque>
   <item>
@@ -786,7 +803,15 @@
   </item>
 </posicao_estoque>`;
 
-      baixarArquivo(xml, 'application/xml;charset=utf-8;', 'modelo-estoque-cliente.xml');
+      const ok = await baixarArquivo(xml, 'application/xml;charset=utf-8;', 'modelo-estoque-cliente.xml');
+      if (!ok) {
+        // claude.ai não aceita .xml: oferece o mesmo modelo em CSV (também importável)
+        const csv = '﻿Loja;SKU;Descricao;Estoque;Venda30d;Custo\n' +
+          'Rede Exemplo - Loja 01;102030;Produto Linha A 200ml;15;210;4,50\n' +
+          'Rede Exemplo - Loja 01;102031;Produto Linha B 1L;180;45;8,90\n' +
+          'Rede Exemplo - Loja 02;102030;Produto Linha A 200ml;130;30;4,50\n';
+        await baixarArquivo(csv, 'text/csv;charset=utf-8;', 'modelo-estoque-cliente.csv');
+      }
     }
   </script>
 </body>

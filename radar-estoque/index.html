@@ -54,7 +54,7 @@
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
 
         <!-- Parâmetros Operacionais -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 flex-1">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 flex-1">
           <div>
             <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Lead Time Entrega (Dias)</label>
             <input type="number" id="leadTimeInput" value="7" min="1" max="60" oninput="recalcularTudo()"
@@ -66,7 +66,7 @@
             <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Cobertura Alvo (Dias)</label>
             <input type="number" id="coberturaAlvoInput" value="25" min="5" max="120" oninput="recalcularTudo()"
               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <span class="text-[11px] text-slate-400">Meta de estoque pós-pedido</span>
+            <span class="text-[11px] text-slate-400">Abaixo de 65% da meta = atenção</span>
           </div>
 
           <div>
@@ -78,15 +78,6 @@
             <span class="text-[11px] text-slate-400">Visão consolidada ou filial</span>
           </div>
 
-          <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Unidade dos Dados</label>
-            <button type="button" onclick="abrirModalUnidade()"
-              class="w-full flex items-center justify-between gap-2 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
-              <span id="resumoUnidade" class="truncate">Unidades</span>
-              <span class="text-xs font-medium text-blue-600">Alterar</span>
-            </button>
-            <span id="resumoUnidadeDetalhe" class="text-[11px] text-slate-400">Estoque e venda em unidades</span>
-          </div>
         </div>
 
         <!-- Simulador de Pulmão Sazonal -->
@@ -112,7 +103,7 @@
             </div>
           </div>
           <p class="text-[11px] text-amber-800 leading-tight">
-            Adiciona estoque de segurança na sugestão de pedido para evitar ruptura nos picos de venda.
+            Projeta a demanda do pico para destacar antes os itens que vão precisar de reposição.
           </p>
         </div>
 
@@ -134,9 +125,9 @@
       </div>
 
       <div class="bg-white rounded-xl border-l-4 border-l-blue-600 border border-slate-200 p-4 shadow-sm">
-        <p class="text-xs font-semibold text-blue-600 uppercase">Pedido Sugerido Total</p>
-        <p id="kpiPedidoUn" class="text-2xl font-bold text-blue-700 mt-1">0 un.</p>
-        <p id="kpiPedidoValor" class="text-xs text-slate-500 mt-1">Est. R$ 0,00 (inclui sazonal)</p>
+        <p class="text-xs font-semibold text-blue-600 uppercase">Precisam de Reposição</p>
+        <p id="kpiRepor" class="text-2xl font-bold text-blue-700 mt-1">0 itens</p>
+        <p id="kpiReporDetalhe" class="text-xs text-slate-500 mt-1">Ruptura, crítico e atenção</p>
       </div>
 
       <div class="bg-white rounded-xl border-l-4 border-l-purple-600 border border-slate-200 p-4 shadow-sm">
@@ -153,8 +144,8 @@
           <button id="tabBtnSaude" onclick="mudarAba('saude')" class="pb-3 text-sm whitespace-nowrap tab-active cursor-pointer">
             1. Semáforo de Saúde
           </button>
-          <button id="tabBtnPedido" onclick="mudarAba('pedido')" class="pb-3 text-sm whitespace-nowrap text-slate-500 hover:text-slate-800 cursor-pointer">
-            2. Sugestão de Pedido & Sazonalidade
+          <button id="tabBtnUnidades" onclick="mudarAba('unidades')" class="pb-3 text-sm whitespace-nowrap text-slate-500 hover:text-slate-800 cursor-pointer">
+            2. Unidade / Caixa
           </button>
           <button id="tabBtnBaixoGiro" onclick="mudarAba('baixogiro')" class="pb-3 text-sm whitespace-nowrap text-slate-500 hover:text-slate-800 cursor-pointer">
             3. Radar de Baixo Giro
@@ -169,6 +160,20 @@
 
       <!-- Conteúdo Aba 1: Semáforo de Saúde -->
       <div id="abaSaude" class="p-4 sm:p-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <label class="inline-flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
+            <input type="checkbox" id="soReporInput" onchange="renderizarTabelas()" class="w-4 h-4 accent-blue-600" />
+            Mostrar só itens que precisam de reposição
+          </label>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="copiarListaReposicao()" class="bg-white border border-blue-300 hover:bg-blue-50 text-blue-800 text-xs font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer">
+              Copiar Lista p/ Comprador
+            </button>
+            <button onclick="exportarReposicaoCSV()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer">
+              Exportar Lista (.CSV)
+            </button>
+          </div>
+        </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
@@ -194,36 +199,45 @@
         </div>
       </div>
 
-      <!-- Conteúdo Aba 2: Sugestão de Pedido -->
-      <div id="abaPedido" class="p-4 sm:p-6 hidden">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 bg-blue-50 border border-blue-100 p-3.5 rounded-lg">
-          <div class="text-xs text-blue-900">
-            <strong>Motor de Reposição:</strong> Calcula a diferença entre a cobertura alvo (com elasticidade sazonal) e o estoque atual.
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <button onclick="copiarResumoPedido()" class="bg-white border border-blue-300 hover:bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer">
-              Copiar Resumo p/ Comprador
+      <!-- Conteúdo Aba 2: Unidade / Caixa por Item -->
+      <div id="abaUnidades" class="p-4 sm:p-6 hidden">
+        <div class="mb-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
+          <p class="text-xs font-bold uppercase tracking-wide text-slate-600 mb-1">Padrão geral</p>
+          <p class="text-xs text-slate-500 mb-3">Vale para todos os itens que não foram ajustados individualmente na tabela abaixo.</p>
+          <div class="flex flex-col sm:flex-row sm:items-end gap-3">
+            <div>
+              <span class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Estoque e venda em</span>
+              <div class="inline-flex rounded-lg border border-slate-300 overflow-hidden" role="group">
+                <button type="button" id="geralBtnUn" onclick="definirUnidadeGeral('un')" class="px-4 py-2 text-sm font-semibold cursor-pointer">Unidade</button>
+                <button type="button" id="geralBtnCx" onclick="definirUnidadeGeral('cx')" class="px-4 py-2 text-sm font-semibold cursor-pointer border-l border-slate-300">Caixa</button>
+              </div>
+            </div>
+            <div>
+              <label for="geralUnPorCaixa" class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Un. por caixa</label>
+              <input type="number" id="geralUnPorCaixa" min="1" step="1" inputmode="numeric" onchange="definirUnPorCaixaGeral(this.value)"
+                class="w-28 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <button type="button" onclick="aplicarGeralATodos()" class="bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg transition cursor-pointer">
+              Aplicar a todos os itens
             </button>
-            <button onclick="exportarPedidoCSV()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer">
-              Exportar Pedido (.CSV)
-            </button>
           </div>
+          <p class="text-[11px] text-slate-500 mt-3">O custo é considerado na mesma unidade do item (por caixa, se o item estiver em caixas). "Un. por caixa" é opcional e serve para mostrar a quantidade equivalente.</p>
         </div>
 
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
               <tr class="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase">
-                <th class="py-3 px-3">Loja</th>
                 <th class="py-3 px-3">SKU / Produto</th>
-                <th class="py-3 px-3 text-right">Est. Atual</th>
-                <th class="py-3 px-3 text-right">Reposição Base</th>
-                <th class="py-3 px-3 text-right text-amber-700">Pulmão Sazonal</th>
-                <th class="py-3 px-3 text-right text-blue-700">Pedido Sugerido</th>
-                <th class="py-3 px-3 text-right">Valor Est.</th>
+                <th class="py-3 px-3 text-center">Lojas</th>
+                <th class="py-3 px-3">Unidade</th>
+                <th class="py-3 px-3">Un. por Caixa</th>
+                <th class="py-3 px-3">Origem</th>
               </tr>
             </thead>
-            <tbody id="tabelaPedidoBody" class="divide-y divide-slate-100 text-sm"></tbody>
+            <tbody id="tabelaUnidadesBody" class="divide-y divide-slate-100 text-sm">
+              <tr><td colspan="5" class="py-8 text-center text-slate-400">Importe um arquivo para ajustar as unidades por item.</td></tr>
+            </tbody>
           </table>
         </div>
       </div>
@@ -255,54 +269,6 @@
     </section>
   </main>
 
-  <!-- Modal: Unidade de Medida dos Dados -->
-  <div id="modalUnidade" hidden class="fixed inset-0 z-50 bg-slate-900/60 flex items-end sm:items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modalUnidadeTitulo">
-    <div class="bg-white rounded-xl shadow-xl w-full max-w-md max-h-full overflow-y-auto p-5 space-y-4">
-      <div>
-        <h2 id="modalUnidadeTitulo" class="text-lg font-bold text-slate-900">Como estão os números do arquivo?</h2>
-        <p id="modalUnidadeOrigem" class="text-xs text-slate-500 mt-1">Confirme para o cálculo de cobertura e pedido ficar correto.</p>
-      </div>
-
-      <fieldset>
-        <legend class="text-xs font-semibold text-slate-600 uppercase mb-2">Estoque e venda estão em</legend>
-        <div class="grid grid-cols-2 gap-2">
-          <label class="flex items-center gap-2 border border-slate-300 rounded-lg px-3 py-2.5 text-sm font-medium cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-            <input type="radio" name="baseUnidade" value="un" class="accent-blue-600" onchange="atualizarModalUnidade()" /> Unidades
-          </label>
-          <label class="flex items-center gap-2 border border-slate-300 rounded-lg px-3 py-2.5 text-sm font-medium cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-            <input type="radio" name="baseUnidade" value="cx" class="accent-blue-600" onchange="atualizarModalUnidade()" /> Caixas
-          </label>
-        </div>
-      </fieldset>
-
-      <div>
-        <label for="unPorCaixaInput" class="block text-xs font-semibold text-slate-600 uppercase mb-1">Unidades por caixa</label>
-        <input type="number" id="unPorCaixaInput" min="1" step="1" inputmode="numeric"
-          class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        <span id="unPorCaixaAjuda" class="block text-[11px] text-slate-500 mt-1"></span>
-      </div>
-
-      <fieldset>
-        <legend class="text-xs font-semibold text-slate-600 uppercase mb-2">O custo informado é</legend>
-        <div class="grid grid-cols-2 gap-2">
-          <label class="flex items-center gap-2 border border-slate-300 rounded-lg px-3 py-2.5 text-sm font-medium cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-            <input type="radio" name="custoPor" value="un" class="accent-blue-600" /> Por unidade
-          </label>
-          <label class="flex items-center gap-2 border border-slate-300 rounded-lg px-3 py-2.5 text-sm font-medium cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-            <input type="radio" name="custoPor" value="cx" class="accent-blue-600" /> Por caixa
-          </label>
-        </div>
-      </fieldset>
-
-      <p id="modalUnidadeErro" class="hidden text-xs font-medium text-red-600"></p>
-
-      <button type="button" onclick="confirmarUnidade()"
-        class="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition cursor-pointer">
-        Confirmar
-      </button>
-    </div>
-  </div>
-
   <script>
     let dadosBrutos = [];
     let dadosProcessados = [];
@@ -311,85 +277,142 @@
     const fmtBRL = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     const fmtNum = (v) => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
 
-    // Unidade de medida dos dados importados (perguntada a cada importação)
-    let configUnidade = { base: 'un', unPorCaixa: 1, custoPor: 'un' };
+    // ---------- Unidade (unidade ou caixa) ----------
+    // Padrão geral + ajustes por SKU. Guardado só neste navegador.
+    let unidadeGeral = { tipo: 'un', unPorCaixa: 0 };
+    let unidadesPorSku = {}; // sku -> { tipo?: 'un'|'cx', unPorCaixa?: n }
     try {
-      const salvo = JSON.parse(localStorage.getItem('radarEstoque.unidade') || 'null');
-      if (salvo && ['un', 'cx'].includes(salvo.base) && ['un', 'cx'].includes(salvo.custoPor) && salvo.unPorCaixa >= 1) {
-        configUnidade = salvo;
-      }
+      const g = JSON.parse(localStorage.getItem('radarEstoque.unidadeGeral') || 'null');
+      if (g && ['un', 'cx'].includes(g.tipo)) unidadeGeral = { tipo: g.tipo, unPorCaixa: Number(g.unPorCaixa) || 0 };
+      const s = JSON.parse(localStorage.getItem('radarEstoque.unidadesPorSku') || 'null');
+      if (s && typeof s === 'object') unidadesPorSku = s;
     } catch { /* armazenamento indisponível */ }
 
-    // Unidades por caixa do item: coluna do arquivo, senão o valor informado
-    const fatorCaixa = (item) => (item.unPorCaixa >= 1 ? item.unPorCaixa : configUnidade.unPorCaixa);
-
-    // Quantidade em unidades, com o equivalente em caixas abaixo (quando houver caixa)
-    const fmtQtd = (un, fator, sufixo = '') => fator > 1
-      ? `${fmtNum(un)}${sufixo}<span class="block text-[10px] font-normal text-slate-400">${fmtNum(un / fator)} cx</span>`
-      : `${fmtNum(un)}${sufixo}`;
-
-    function atualizarResumoUnidade() {
-      const { base, unPorCaixa, custoPor } = configUnidade;
-      const temColuna = dadosBrutos.some(i => i.unPorCaixa >= 1);
-      document.getElementById('resumoUnidade').textContent = base === 'cx' ? 'Caixas' : 'Unidades';
-      const emb = temColuna ? 'un/cx do arquivo' : (unPorCaixa > 1 ? `${unPorCaixa} un/cx` : 'sem caixa');
-      document.getElementById('resumoUnidadeDetalhe').textContent = `${emb} · custo por ${custoPor === 'cx' ? 'caixa' : 'unidade'}`;
+    function salvarUnidades() {
+      try {
+        localStorage.setItem('radarEstoque.unidadeGeral', JSON.stringify(unidadeGeral));
+        localStorage.setItem('radarEstoque.unidadesPorSku', JSON.stringify(unidadesPorSku));
+      } catch { /* ignora */ }
     }
 
-    let origemModalUnidade = '';
-    function abrirModalUnidade(origem) {
-      if (origem) origemModalUnidade = origem;
-      const modal = document.getElementById('modalUnidade');
-      document.querySelector(`input[name="baseUnidade"][value="${configUnidade.base}"]`).checked = true;
-      document.querySelector(`input[name="custoPor"][value="${configUnidade.custoPor}"]`).checked = true;
-      document.getElementById('unPorCaixaInput').value = configUnidade.unPorCaixa;
-      document.getElementById('modalUnidadeOrigem').textContent = origem
-        ? `Arquivo ${origem} importado com ${dadosBrutos.length} itens. Confirme a unidade para o cálculo de cobertura e pedido ficar correto.`
-        : 'Altere a unidade usada para interpretar estoque, venda e custo.';
-      document.getElementById('modalUnidadeErro').classList.add('hidden');
-      atualizarModalUnidade();
-      modal.hidden = false;
-      document.getElementById('unPorCaixaInput').focus();
+    // Unidade efetiva de um item: ajuste do SKU > coluna do arquivo (un/cx) > padrão geral
+    function unidadeDoItem(item) {
+      const aj = unidadesPorSku[item.sku] || {};
+      return {
+        tipo: aj.tipo || unidadeGeral.tipo,
+        unPorCaixa: aj.unPorCaixa || item.unPorCaixa || unidadeGeral.unPorCaixa || 0,
+        personalizado: !!(aj.tipo || aj.unPorCaixa)
+      };
     }
 
-    function atualizarModalUnidade() {
-      const base = document.querySelector('input[name="baseUnidade"]:checked').value;
-      const qtdColuna = dadosBrutos.filter(i => i.unPorCaixa >= 1).length;
-      let ajuda = base === 'cx'
-        ? 'Obrigatório: usado para converter caixas em unidades.'
-        : 'Opcional: com mais de 1, o pedido é arredondado para caixa fechada. Deixe 1 para não arredondar.';
-      if (qtdColuna > 0) ajuda += ` O arquivo já informa a embalagem de ${qtdColuna} de ${dadosBrutos.length} itens; este valor vale para os demais.`;
-      document.getElementById('unPorCaixaAjuda').textContent = ajuda;
+    const siglaUn = (tipo) => (tipo === 'cx' ? 'cx' : 'un.');
+
+    // Quantidade na unidade do item, com o equivalente na outra unidade abaixo (se houver un/cx)
+    function fmtQtd(qtd, item) {
+      const principal = `${fmtNum(qtd)} ${siglaUn(item.unidade)}`;
+      if (!(item.unPorCaixa > 1) || !qtd) return principal;
+      const equiv = item.unidade === 'cx' ? `${fmtNum(qtd * item.unPorCaixa)} un.` : `${fmtNum(qtd / item.unPorCaixa)} cx`;
+      return `${principal}<span class="block text-[10px] font-normal text-slate-400">= ${equiv}</span>`;
     }
 
-    function confirmarUnidade() {
-      const base = document.querySelector('input[name="baseUnidade"]:checked').value;
-      const custoPor = document.querySelector('input[name="custoPor"]:checked').value;
-      const unPorCaixa = Math.floor(Number(document.getElementById('unPorCaixaInput').value));
-      const erro = document.getElementById('modalUnidadeErro');
-      const todosComColuna = dadosBrutos.length > 0 && dadosBrutos.every(i => i.unPorCaixa >= 1);
-
-      let msg = '';
-      if (!(unPorCaixa >= 1)) msg = 'Informe quantas unidades vêm em cada caixa (1 ou mais).';
-      else if ((base === 'cx' || custoPor === 'cx') && unPorCaixa < 2 && !todosComColuna) msg = 'Com dados ou custo por caixa, informe quantas unidades vêm em cada caixa (2 ou mais).';
-      if (msg) {
-        erro.textContent = msg;
-        erro.classList.remove('hidden');
-        return;
-      }
-
-      configUnidade = { base, unPorCaixa, custoPor };
-      try { localStorage.setItem('radarEstoque.unidade', JSON.stringify(configUnidade)); } catch { /* ignora */ }
-      document.getElementById('modalUnidade').hidden = true;
-      atualizarResumoUnidade();
+    function definirUnidadeGeral(tipo) {
+      unidadeGeral.tipo = tipo;
+      salvarUnidades();
       recalcularTudo();
     }
 
-    document.addEventListener('keydown', (e) => {
-      const modal = document.getElementById('modalUnidade');
-      if (modal.hidden) return;
-      if (e.key === 'Enter') { e.preventDefault(); confirmarUnidade(); }
-    });
+    function definirUnPorCaixaGeral(valor) {
+      const n = Math.floor(Number(valor));
+      unidadeGeral.unPorCaixa = n >= 1 ? n : 0;
+      salvarUnidades();
+      recalcularTudo();
+    }
+
+    function aplicarGeralATodos() {
+      const qtd = Object.keys(unidadesPorSku).length;
+      if (qtd > 0 && !confirm(`Isso remove os ajustes individuais de ${qtd} item(ns) e aplica o padrão geral a todos. Continuar?`)) return;
+      unidadesPorSku = {};
+      salvarUnidades();
+      recalcularTudo();
+    }
+
+    function definirUnidadeItem(sku, campo, valor) {
+      const aj = { ...(unidadesPorSku[sku] || {}) };
+      if (campo === 'tipo') {
+        aj.tipo = valor;
+      } else {
+        const n = Math.floor(Number(valor));
+        if (n >= 1) aj.unPorCaixa = n; else delete aj.unPorCaixa;
+      }
+      unidadesPorSku[sku] = aj;
+      salvarUnidades();
+      recalcularTudo();
+    }
+
+    function restaurarUnidadeItem(sku) {
+      delete unidadesPorSku[sku];
+      salvarUnidades();
+      recalcularTudo();
+    }
+
+    function renderizarUnidades() {
+      const ativo = 'bg-blue-600 text-white';
+      const inativo = 'bg-white text-slate-700 hover:bg-slate-100';
+      document.getElementById('geralBtnUn').className = `px-4 py-2 text-sm font-semibold cursor-pointer ${unidadeGeral.tipo === 'un' ? ativo : inativo}`;
+      document.getElementById('geralBtnCx').className = `px-4 py-2 text-sm font-semibold cursor-pointer border-l border-slate-300 ${unidadeGeral.tipo === 'cx' ? ativo : inativo}`;
+      const campoGeral = document.getElementById('geralUnPorCaixa');
+      if (document.activeElement !== campoGeral) campoGeral.value = unidadeGeral.unPorCaixa || '';
+      campoGeral.placeholder = 'opcional';
+
+      if (dadosBrutos.length === 0) return;
+      const termoBusca = document.getElementById('buscaInput').value.toLowerCase().trim();
+
+      // Um registro por SKU (a unidade vale para o produto em todas as lojas)
+      const porSku = new Map();
+      dadosBrutos.forEach(i => {
+        if (!porSku.has(i.sku)) porSku.set(i.sku, { sku: i.sku, descricao: i.descricao, lojas: new Set(), unPorCaixaArquivo: 0 });
+        const r = porSku.get(i.sku);
+        r.lojas.add(i.loja);
+        if (i.unPorCaixa >= 1) r.unPorCaixaArquivo = i.unPorCaixa;
+      });
+      const linhas = [...porSku.values()]
+        .filter(r => !termoBusca || String(r.sku).toLowerCase().includes(termoBusca) || String(r.descricao).toLowerCase().includes(termoBusca))
+        .sort((a, b) => String(a.descricao).localeCompare(String(b.descricao), 'pt-BR'));
+
+      document.getElementById('tabelaUnidadesBody').innerHTML = linhas.length === 0
+        ? `<tr><td colspan="5" class="py-8 text-center text-slate-400">Nenhum item encontrado para a busca atual.</td></tr>`
+        : linhas.map(r => {
+          const u = unidadeDoItem({ sku: r.sku, unPorCaixa: r.unPorCaixaArquivo });
+          const skuAttr = esc(JSON.stringify(String(r.sku)));
+          const placeholder = r.unPorCaixaArquivo ? `${r.unPorCaixaArquivo} (arquivo)` : (unidadeGeral.unPorCaixa ? `${unidadeGeral.unPorCaixa} (geral)` : 'opcional');
+          const valorAjuste = (unidadesPorSku[r.sku] || {}).unPorCaixa || '';
+          return `
+          <tr class="hover:bg-slate-50 ${u.personalizado ? 'bg-blue-50/40' : ''}">
+            <td class="py-2.5 px-3">
+              <span class="font-mono text-xs text-slate-400 mr-1">${esc(r.sku)}</span>
+              <span class="font-medium text-slate-800">${esc(r.descricao)}</span>
+            </td>
+            <td class="py-2.5 px-3 text-center text-slate-600">${r.lojas.size}</td>
+            <td class="py-2.5 px-3">
+              <select onchange='definirUnidadeItem(${skuAttr}, "tipo", this.value)' aria-label="Unidade de ${esc(r.descricao)}"
+                class="border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="un" ${u.tipo === 'un' ? 'selected' : ''}>Unidade</option>
+                <option value="cx" ${u.tipo === 'cx' ? 'selected' : ''}>Caixa</option>
+              </select>
+            </td>
+            <td class="py-2.5 px-3">
+              <input type="number" min="1" step="1" inputmode="numeric" value="${valorAjuste}" placeholder="${esc(placeholder)}"
+                onchange='definirUnidadeItem(${skuAttr}, "unPorCaixa", this.value)' aria-label="Unidades por caixa de ${esc(r.descricao)}"
+                class="w-32 border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </td>
+            <td class="py-2.5 px-3 text-xs">
+              ${u.personalizado
+                ? `<span class="font-semibold text-blue-700">Ajustado</span> <button type="button" onclick='restaurarUnidadeItem(${skuAttr})' class="ml-1 text-slate-500 underline hover:text-slate-800 cursor-pointer">usar padrão</button>`
+                : '<span class="text-slate-400">Padrão geral</span>'}
+            </td>
+          </tr>`;
+        }).join('');
+    }
 
     // Escapa texto vindo de arquivos importados antes de inserir no HTML
     const esc = (v) => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -437,7 +460,7 @@
     // Navegação entre abas
     const ABAS = {
       saude: { painel: 'abaSaude', botao: 'tabBtnSaude' },
-      pedido: { painel: 'abaPedido', botao: 'tabBtnPedido' },
+      unidades: { painel: 'abaUnidades', botao: 'tabBtnUnidades' },
       baixogiro: { painel: 'abaBaixoGiro', botao: 'tabBtnBaixoGiro' }
     };
 
@@ -495,12 +518,10 @@
         { loja: 'Loja 03 - Atacado Norte', sku: '7891003', descricao: 'Água de Coco Integral 1L', estoque: 35, venda30d: 540, custo: 6.80 },
         { loja: 'Loja 03 - Atacado Norte', sku: '7891005', descricao: 'Leite de Coco Culinário 500ml', estoque: 320, venda30d: 90, custo: 6.90 }
       ];
-      // Exemplo: dados em unidades, custo por unidade, embalagem por SKU
+      // Exemplo: embalagem por SKU (unidades por caixa)
       const embalagens = { '7891001': 24, '7891002': 24, '7891003': 12, '7891004': 12, '7891005': 12, '7891006': 20 };
       dadosBrutos.forEach(i => { i.unPorCaixa = embalagens[i.sku] || 0; });
-      configUnidade = { base: 'un', unPorCaixa: 1, custoPor: 'un' };
       popularFiltroLojas();
-      atualizarResumoUnidade();
       recalcularTudo();
     }
 
@@ -525,9 +546,7 @@
       if (parsed.length === 0) throw new Error(`Nenhum item válido encontrado no ${origem}.`);
       dadosBrutos = parsed;
       popularFiltroLojas();
-      atualizarResumoUnidade();
       recalcularTudo();
-      abrirModalUnidade(origem);
     }
 
     // Upload e Parse de Excel / XML / PDF / CSV
@@ -781,22 +800,14 @@
         .filter(item => lojaSelecionada === 'TODAS' || item.loja === lojaSelecionada)
         .filter(item => !termoBusca || String(item.sku).toLowerCase().includes(termoBusca) || String(item.descricao).toLowerCase().includes(termoBusca))
         .map(itemOriginal => {
-          // Converte tudo para unidades conforme a unidade informada pelo usuário
-          const fator = fatorCaixa(itemOriginal);
-          const mult = configUnidade.base === 'cx' ? fator : 1;
-          const item = {
-            ...itemOriginal,
-            unPorCaixa: fator,
-            estoque: itemOriginal.estoque * mult,
-            venda30d: itemOriginal.venda30d * mult,
-            custo: configUnidade.custoPor === 'cx' ? itemOriginal.custo / fator : itemOriginal.custo
-          };
-          // Arredonda para caixa fechada quando há embalagem
-          const emCaixa = (qtd) => fator > 1 ? Math.ceil(qtd / fator) * fator : qtd;
+          // Quantidades ficam na unidade do item (unidade ou caixa); custo na mesma unidade
+          const u = unidadeDoItem(itemOriginal);
+          const item = { ...itemOriginal, unidade: u.tipo, unPorCaixa: u.unPorCaixa };
 
           const vmdBase = item.venda30d / 30;
           const vmdProjetada = vmdBase * fatorSazonal;
-          const coberturaDias = vmdBase > 0 ? Math.round(item.estoque / vmdBase) : (item.estoque > 0 ? 999 : 0);
+          // Cobertura considera a demanda projetada (simulador sazonal)
+          const coberturaDias = vmdProjetada > 0 ? Math.round(item.estoque / vmdProjetada) : (item.estoque > 0 ? 999 : 0);
 
           // Classificação de Saúde
           let status = 'SAUDÁVEL';
@@ -829,13 +840,8 @@
             prioridade = 4;
           }
 
-          // Cálculo de Pedido Sugerido
-          const estoqueUtil = Math.max(0, item.estoque);
-          const reqBase = emCaixa(Math.max(0, Math.ceil((vmdBase * coberturaAlvo) - estoqueUtil)));
-          const pedidoSugerido = emCaixa(Math.max(0, Math.ceil((vmdProjetada * coberturaAlvo) - estoqueUtil)));
-          const caixasPedido = fator > 1 ? pedidoSugerido / fator : 0;
-          const pulmaoSazonal = Math.max(0, pedidoSugerido - reqBase);
-          const valorPedido = pedidoSugerido * item.custo;
+          // Destaque de reposição (sem sugerir quantidade)
+          const precisaRepor = status === 'RUPTURA' || status === 'CRÍTICO' || status === 'ATENÇÃO';
 
           // Excesso acima de 45 dias
           const estoqueIdealMax = Math.ceil(vmdBase * 45);
@@ -861,11 +867,7 @@
             status,
             badgeClass,
             prioridade,
-            reqBase,
-            pulmaoSazonal,
-            pedidoSugerido,
-            caixasPedido,
-            valorPedido,
+            precisaRepor,
             excessoUn,
             capitalParado,
             acaoBaixoGiro
@@ -878,38 +880,52 @@
 
     function atualizarKPIs() {
       const totalSkus = dadosProcessados.length;
-      const estoqueTotal = dadosProcessados.reduce((acc, i) => acc + i.estoque, 0);
-      const criticos = dadosProcessados.filter(i => i.status === 'RUPTURA' || i.status === 'CRÍTICO').length;
+      const somaPor = (tipo) => dadosProcessados.filter(i => i.unidade === tipo).reduce((acc, i) => acc + i.estoque, 0);
+      const estUn = somaPor('un'), estCx = somaPor('cx');
+      const partes = [];
+      if (estUn || !estCx) partes.push(`${fmtNum(estUn)} un.`);
+      if (estCx) partes.push(`${fmtNum(estCx)} cx`);
+      const ruptura = dadosProcessados.filter(i => i.status === 'RUPTURA').length;
+      const critico = dadosProcessados.filter(i => i.status === 'CRÍTICO').length;
       const atencao = dadosProcessados.filter(i => i.status === 'ATENÇÃO').length;
-      const pedidoUn = dadosProcessados.reduce((acc, i) => acc + i.pedidoSugerido, 0);
-      const pedidoVal = dadosProcessados.reduce((acc, i) => acc + i.valorPedido, 0);
+      const repor = ruptura + critico + atencao;
       const baixoGiroItens = dadosProcessados.filter(i => i.status === 'BAIXO GIRO' || i.status === 'SEM GIRO');
       const capitalParado = baixoGiroItens.reduce((acc, i) => acc + i.capitalParado, 0);
-      const sazonal = Number(document.getElementById('sliderSazonal').value) || 0;
 
       document.getElementById('kpiTotalSkus').textContent = fmtNum(totalSkus);
-      document.getElementById('kpiEstoqueTotal').textContent = `${fmtNum(estoqueTotal)} un. em estoque atual`;
-      document.getElementById('kpiCriticos').textContent = `${criticos} itens`;
+      document.getElementById('kpiEstoqueTotal').textContent = `${partes.join(' + ')} em estoque atual`;
+      document.getElementById('kpiCriticos').textContent = `${ruptura + critico} itens`;
       document.getElementById('kpiAtencao').textContent = `+ ${atencao} itens em ponto de pedido`;
-      document.getElementById('kpiPedidoUn').textContent = `${fmtNum(pedidoUn)} un.`;
-      document.getElementById('kpiPedidoValor').textContent = `Est. ${fmtBRL(pedidoVal)}${sazonal > 0 ? ` (inclui +${sazonal}% sazonal)` : ''}`;
+      document.getElementById('kpiRepor').textContent = `${repor} itens`;
+      document.getElementById('kpiReporDetalhe').textContent = `${ruptura} ruptura · ${critico} crítico · ${atencao} atenção`;
       document.getElementById('kpiBaixoGiro').textContent = `${baixoGiroItens.length} itens`;
       document.getElementById('kpiCapitalParado').textContent = `${fmtBRL(capitalParado)} parados em excesso`;
     }
 
     function renderizarTabelas() {
-      // 1. Tabela Saúde (Ordenada por prioridade de risco)
-      const ordenadosSaude = [...dadosProcessados].sort((a, b) => a.prioridade - b.prioridade || a.coberturaDias - b.coberturaDias);
+      // 1. Tabela Saúde (ordenada por risco, itens a repor destacados)
+      const soRepor = document.getElementById('soReporInput').checked;
+      const ordenadosSaude = dadosProcessados
+        .filter(i => !soRepor || i.precisaRepor)
+        .sort((a, b) => a.prioridade - b.prioridade || a.coberturaDias - b.coberturaDias);
+      const destaque = (i) => {
+        if (i.status === 'RUPTURA' || i.status === 'CRÍTICO') return 'bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500';
+        if (i.status === 'ATENÇÃO') return 'bg-amber-50 hover:bg-amber-100 border-l-4 border-l-amber-400';
+        return 'hover:bg-slate-50 border-l-4 border-l-transparent';
+      };
       document.getElementById('tabelaSaudeBody').innerHTML = ordenadosSaude.length === 0
-        ? `<tr><td colspan="8" class="py-8 text-center text-slate-400">Nenhum item encontrado para o filtro atual.</td></tr>`
+        ? `<tr><td colspan="8" class="py-8 text-center text-slate-400">${soRepor ? 'Nenhum item precisa de reposição para os parâmetros atuais.' : 'Nenhum item encontrado para o filtro atual.'}</td></tr>`
         : ordenadosSaude.map(i => `
-        <tr class="hover:bg-slate-50">
+        <tr class="${destaque(i)}">
           <td class="py-2.5 px-3 text-xs font-medium text-slate-600">${esc(i.loja)}</td>
           <td class="py-2.5 px-3 font-mono text-xs text-slate-500">${esc(i.sku)}</td>
-          <td class="py-2.5 px-3 font-medium text-slate-800">${esc(i.descricao)}</td>
-          <td class="py-2.5 px-3 text-right font-semibold">${fmtQtd(i.estoque, i.unPorCaixa)}</td>
-          <td class="py-2.5 px-3 text-right text-slate-600">${fmtNum(i.venda30d)}</td>
-          <td class="py-2.5 px-3 text-right text-slate-600">${i.vmdBase.toFixed(1)}/dia</td>
+          <td class="py-2.5 px-3 font-medium text-slate-800">
+            ${esc(i.descricao)}
+            ${i.precisaRepor ? `<span class="ml-1 inline-block align-middle text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${i.prioridade === 1 ? 'bg-red-600 text-white' : 'bg-amber-500 text-white'}">Repor</span>` : ''}
+          </td>
+          <td class="py-2.5 px-3 text-right font-semibold">${fmtQtd(i.estoque, i)}</td>
+          <td class="py-2.5 px-3 text-right text-slate-600">${fmtQtd(i.venda30d, i)}</td>
+          <td class="py-2.5 px-3 text-right text-slate-600">${i.vmdBase.toFixed(1)} ${siglaUn(i.unidade)}/dia</td>
           <td class="py-2.5 px-3 text-right font-semibold">${i.coberturaDias === 999 ? '∞' : i.coberturaDias + ' dias'}</td>
           <td class="py-2.5 px-3 text-center">
             <span class="px-2.5 py-1 rounded-full text-[11px] ${i.badgeClass}">${i.status}</span>
@@ -917,24 +933,8 @@
         </tr>
       `).join('');
 
-      // 2. Tabela Sugestão de Pedido (Apenas itens com pedido > 0)
-      const itensPedido = dadosProcessados.filter(i => i.pedidoSugerido > 0).sort((a, b) => b.pedidoSugerido - a.pedidoSugerido);
-      document.getElementById('tabelaPedidoBody').innerHTML = itensPedido.length === 0
-        ? `<tr><td colspan="7" class="py-8 text-center text-slate-400">Nenhum item precisa de reposição para os parâmetros atuais.</td></tr>`
-        : itensPedido.map(i => `
-          <tr class="hover:bg-slate-50">
-            <td class="py-2.5 px-3 text-xs font-medium text-slate-600">${esc(i.loja)}</td>
-            <td class="py-2.5 px-3">
-              <span class="font-mono text-xs text-slate-400 mr-1">${esc(i.sku)}</span>
-              <span class="font-medium text-slate-800">${esc(i.descricao)}</span>
-            </td>
-            <td class="py-2.5 px-3 text-right text-slate-600">${fmtQtd(i.estoque, i.unPorCaixa)}</td>
-            <td class="py-2.5 px-3 text-right text-slate-700">${fmtNum(i.reqBase)}</td>
-            <td class="py-2.5 px-3 text-right font-medium text-amber-700">+${fmtNum(i.pulmaoSazonal)}</td>
-            <td class="py-2.5 px-3 text-right font-bold text-blue-700">${fmtQtd(i.pedidoSugerido, i.unPorCaixa, ' un.')}</td>
-            <td class="py-2.5 px-3 text-right font-medium text-slate-700">${fmtBRL(i.valorPedido)}</td>
-          </tr>
-        `).join('');
+      // 2. Unidade / Caixa por item
+      renderizarUnidades();
 
       // 3. Tabela Baixo Giro
       const itensBaixoGiro = dadosProcessados.filter(i => i.status === 'BAIXO GIRO' || i.status === 'SEM GIRO').sort((a, b) => b.capitalParado - a.capitalParado);
@@ -947,8 +947,8 @@
               <span class="font-mono text-xs text-slate-400 mr-1">${esc(i.sku)}</span>
               <span class="font-medium text-slate-800">${esc(i.descricao)}</span>
             </td>
-            <td class="py-2.5 px-3 text-right font-semibold">${fmtQtd(i.estoque, i.unPorCaixa)}</td>
-            <td class="py-2.5 px-3 text-right text-slate-600">${fmtNum(i.venda30d)}</td>
+            <td class="py-2.5 px-3 text-right font-semibold">${fmtQtd(i.estoque, i)}</td>
+            <td class="py-2.5 px-3 text-right text-slate-600">${fmtQtd(i.venda30d, i)}</td>
             <td class="py-2.5 px-3 text-right font-semibold text-purple-700">${i.coberturaDias === 999 ? 'Sem saída' : i.coberturaDias + ' dias'}</td>
             <td class="py-2.5 px-3 text-right font-semibold text-slate-800">${fmtBRL(i.capitalParado)}</td>
             <td class="py-2.5 px-3">
@@ -958,36 +958,36 @@
         `).join('');
     }
 
-    // Exportar Pedido CSV (com BOM UTF-8 para Excel)
-    function exportarPedidoCSV() {
-      const itens = dadosProcessados.filter(i => i.pedidoSugerido > 0);
-      if (itens.length === 0) return alert('Não há itens na sugestão de pedido para exportar.');
+    const itensParaRepor = () => dadosProcessados
+      .filter(i => i.precisaRepor)
+      .sort((a, b) => a.prioridade - b.prioridade || a.coberturaDias - b.coberturaDias);
+
+    // Exportar lista de reposição (CSV com BOM UTF-8 para Excel)
+    function exportarReposicaoCSV() {
+      const itens = itensParaRepor();
+      if (itens.length === 0) return alert('Nenhum item precisa de reposição para os parâmetros atuais.');
 
       const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
-      let csv = '﻿Loja;SKU;Produto;Estoque Atual;Reposicao Base;Pulmao Sazonal;Pedido Sugerido (un);Un por Caixa;Pedido (caixas);Valor Estimado\n';
       const n = (v) => String(Math.round(v * 100) / 100).replace('.', ',');
+      let csv = '\uFEFFLoja;SKU;Produto;Unidade;Un por Caixa;Estoque Atual;Venda 30d;Cobertura (dias);Status\n';
       itens.forEach(i => {
-        csv += `${q(i.loja)};${q(i.sku)};${q(i.descricao)};${n(i.estoque)};${i.reqBase};${i.pulmaoSazonal};${i.pedidoSugerido};${i.unPorCaixa > 1 ? i.unPorCaixa : ''};${i.unPorCaixa > 1 ? i.caixasPedido : ''};${q(i.valorPedido.toFixed(2).replace('.', ','))}\n`;
+        csv += `${q(i.loja)};${q(i.sku)};${q(i.descricao)};${i.unidade === 'cx' ? 'Caixa' : 'Unidade'};${i.unPorCaixa > 1 ? i.unPorCaixa : ''};${n(i.estoque)};${n(i.venda30d)};${i.coberturaDias};${q(i.status)}\n`;
       });
 
-      baixarArquivo(csv, 'text/csv;charset=utf-8;', 'sugestao-pedido-reposicao.csv');
+      baixarArquivo(csv, 'text/csv;charset=utf-8;', 'itens-para-reposicao.csv');
     }
 
-    // Copiar Resumo Executivo para WhatsApp/E-mail
-    async function copiarResumoPedido() {
-      const itens = dadosProcessados.filter(i => i.pedidoSugerido > 0).sort((a, b) => b.valorPedido - a.valorPedido);
-      if (itens.length === 0) return alert('Não há itens na sugestão de pedido.');
+    // Copiar lista para WhatsApp/E-mail
+    async function copiarListaReposicao() {
+      const itens = itensParaRepor();
+      if (itens.length === 0) return alert('Nenhum item precisa de reposição para os parâmetros atuais.');
 
-      const sazonal = document.getElementById('sliderSazonal').value;
-      const totalUn = itens.reduce((acc, i) => acc + i.pedidoSugerido, 0);
-      const totalVal = itens.reduce((acc, i) => acc + i.valorPedido, 0);
-
-      let texto = `*SUGESTÃO DE PEDIDO & REPOSIÇÃO*\n`;
-      texto += `Cenário Sazonal: +${sazonal}% | Volume Total: ${fmtNum(totalUn)} un. (${fmtBRL(totalVal)})\n\n`;
-      itens.slice(0, 15).forEach(i => {
-        texto += `• [${i.loja}] ${i.descricao} (SKU ${i.sku}): *+${i.unPorCaixa > 1 ? `${fmtNum(i.caixasPedido)} cx (${fmtNum(i.pedidoSugerido)} un.)` : `${fmtNum(i.pedidoSugerido)} un.`}* (Est. atual: ${fmtNum(i.estoque)} un.)\n`;
+      let texto = `*ITENS QUE PRECISAM DE REPOSIÇÃO* (${itens.length})\n\n`;
+      itens.slice(0, 30).forEach(i => {
+        const cob = i.coberturaDias === 0 ? 'sem estoque' : `${i.coberturaDias} dias de cobertura`;
+        texto += `• [${i.loja}] ${i.descricao} (SKU ${i.sku}): *${i.status}* — estoque ${fmtNum(i.estoque)} ${siglaUn(i.unidade)}, ${cob}\n`;
       });
-      if (itens.length > 15) texto += `... e mais ${itens.length - 15} itens na planilha completa.`;
+      if (itens.length > 30) texto += `... e mais ${itens.length - 30} itens na planilha completa.`;
 
       try {
         await navigator.clipboard.writeText(texto);
@@ -999,7 +999,7 @@
         document.execCommand('copy');
         document.body.removeChild(ta);
       }
-      alert('Resumo copiado! Basta colar no WhatsApp ou e-mail do comprador.');
+      alert('Lista copiada! Basta colar no WhatsApp ou e-mail do comprador.');
     }
 
     // Gerar XML Modelo para Teste de Upload
@@ -1042,6 +1042,8 @@
         await baixarArquivo(csv, 'text/csv;charset=utf-8;', 'modelo-estoque-cliente.csv');
       }
     }
+
+    renderizarUnidades();
   </script>
 </body>
 </html>

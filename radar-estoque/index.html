@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Radar de Estoque & Reposição B2B</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .tab-active { border-bottom: 2px solid #2563eb; color: #1d4ed8 !important; font-weight: 600; }
+  </style>
+</head>
+<body class="text-slate-800 antialiased">
+
+  <!-- Barra Superior -->
+  <header class="bg-slate-900 text-white shadow-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="bg-blue-600 text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded">Inteligência Comercial</span>
+          <span class="text-xs text-slate-400">Processamento 100% Local & Seguro</span>
+        </div>
+        <h1 class="text-xl sm:text-2xl font-bold mt-1">Analisador de Saúde de Estoque & Reposição</h1>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <button onclick="carregarDadosExemplo()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow-sm cursor-pointer">
+          Carregar Dados de Exemplo
+        </button>
+        <button onclick="baixarXmlModelo()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium px-3 py-2 rounded-lg transition cursor-pointer">
+          Baixar XML Modelo
+        </button>
+        <label class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow-sm cursor-pointer">
+          Importar XML / PDF / CSV
+          <input type="file" id="fileInput" accept=".xml,.pdf,.csv" class="hidden" onchange="handleFileUpload(event)" />
+        </label>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Painel de Parâmetros e Simulador Sazonal -->
+    <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+
+        <!-- Parâmetros Operacionais -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 flex-1">
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Lead Time Entrega (Dias)</label>
+            <input type="number" id="leadTimeInput" value="7" min="1" max="60" oninput="recalcularTudo()"
+              class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <span class="text-[11px] text-slate-400">Limite para alerta crítico</span>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Cobertura Alvo (Dias)</label>
+            <input type="number" id="coberturaAlvoInput" value="25" min="5" max="120" oninput="recalcularTudo()"
+              class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <span class="text-[11px] text-slate-400">Meta de estoque pós-pedido</span>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Filtrar Loja / Filial</label>
+            <select id="filtroLoja" onchange="recalcularTudo()"
+              class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="TODAS">Todas as Lojas</option>
+            </select>
+            <span class="text-[11px] text-slate-400">Visão consolidada ou filial</span>
+          </div>
+        </div>
+
+        <!-- Simulador de Pulmão Sazonal -->
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 lg:w-[440px]">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold uppercase tracking-wide text-amber-800">Simulador de Pulmão Sazonal</span>
+            <span id="badgeSazonal" class="bg-slate-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">+0% Demanda</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+            <select id="presetSazonal" onchange="aplicarPresetSazonal()"
+              class="border border-amber-300 bg-white rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none">
+              <option value="0">Operação Normal (0%)</option>
+              <option value="25">Verão / Alta Temporada (+25%)</option>
+              <option value="35">Páscoa / Data Comemorativa (+35%)</option>
+              <option value="40">Festas Juninas / Inverno (+40%)</option>
+              <option value="45">Natal & Fim de Ano (+45%)</option>
+              <option value="50">Black Friday / Tabloide Rede (+50%)</option>
+              <option value="custom" disabled>Personalizado</option>
+            </select>
+            <div class="flex items-center gap-2">
+              <input type="range" id="sliderSazonal" min="0" max="100" step="5" value="0" oninput="atualizarSliderSazonal()"
+                class="w-full accent-amber-600 cursor-pointer" />
+            </div>
+          </div>
+          <p class="text-[11px] text-amber-800 leading-tight">
+            Adiciona estoque de segurança na sugestão de pedido para evitar ruptura nos picos de venda.
+          </p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Cards de KPIs Executivos -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+        <p class="text-xs font-semibold text-slate-500 uppercase">SKUs Analisados</p>
+        <p id="kpiTotalSkus" class="text-2xl font-bold text-slate-900 mt-1">0</p>
+        <p id="kpiEstoqueTotal" class="text-xs text-slate-500 mt-1">0 un. em estoque atual</p>
+      </div>
+
+      <div class="bg-white rounded-xl border-l-4 border-l-red-500 border border-slate-200 p-4 shadow-sm">
+        <p class="text-xs font-semibold text-red-600 uppercase">Ruptura / Risco Crítico</p>
+        <p id="kpiCriticos" class="text-2xl font-bold text-red-600 mt-1">0 itens</p>
+        <p id="kpiAtencao" class="text-xs text-slate-500 mt-1">+ 0 itens em ponto de pedido</p>
+      </div>
+
+      <div class="bg-white rounded-xl border-l-4 border-l-blue-600 border border-slate-200 p-4 shadow-sm">
+        <p class="text-xs font-semibold text-blue-600 uppercase">Pedido Sugerido Total</p>
+        <p id="kpiPedidoUn" class="text-2xl font-bold text-blue-700 mt-1">0 un.</p>
+        <p id="kpiPedidoValor" class="text-xs text-slate-500 mt-1">Est. R$ 0,00 (inclui sazonal)</p>
+      </div>
+
+      <div class="bg-white rounded-xl border-l-4 border-l-purple-600 border border-slate-200 p-4 shadow-sm">
+        <p class="text-xs font-semibold text-purple-600 uppercase">Baixo Giro / Excesso (&gt;45d)</p>
+        <p id="kpiBaixoGiro" class="text-2xl font-bold text-purple-700 mt-1">0 itens</p>
+        <p id="kpiCapitalParado" class="text-xs text-slate-500 mt-1">R$ 0,00 parados em excesso</p>
+      </div>
+    </section>
+
+    <!-- Abas e Busca -->
+    <section class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="border-b border-slate-200 px-4 sm:px-6 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex space-x-6 overflow-x-auto">
+          <button id="tabBtnSaude" onclick="mudarAba('saude')" class="pb-3 text-sm whitespace-nowrap tab-active cursor-pointer">
+            1. Semáforo de Saúde
+          </button>
+          <button id="tabBtnPedido" onclick="mudarAba('pedido')" class="pb-3 text-sm whitespace-nowrap text-slate-500 hover:text-slate-800 cursor-pointer">
+            2. Sugestão de Pedido & Sazonalidade
+          </button>
+          <button id="tabBtnBaixoGiro" onclick="mudarAba('baixogiro')" class="pb-3 text-sm whitespace-nowrap text-slate-500 hover:text-slate-800 cursor-pointer">
+            3. Radar de Baixo Giro
+          </button>
+        </div>
+
+        <div class="pb-2 sm:pb-3">
+          <input type="text" id="buscaInput" placeholder="Buscar SKU ou produto..." oninput="recalcularTudo()"
+            class="border border-slate-300 rounded-lg px-3 py-1.5 text-xs w-full sm:w-56 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+      </div>
+
+      <!-- Conteúdo Aba 1: Semáforo de Saúde -->
+      <div id="abaSaude" class="p-4 sm:p-6">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase">
+                <th class="py-3 px-3">Loja</th>
+                <th class="py-3 px-3">SKU</th>
+                <th class="py-3 px-3">Produto</th>
+                <th class="py-3 px-3 text-right">Estoque</th>
+                <th class="py-3 px-3 text-right">Venda (30d)</th>
+                <th class="py-3 px-3 text-right">VMD</th>
+                <th class="py-3 px-3 text-right">Cobertura</th>
+                <th class="py-3 px-3 text-center">Status Saúde</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaSaudeBody" class="divide-y divide-slate-100 text-sm">
+              <tr>
+                <td colspan="8" class="py-10 text-center text-slate-400">
+                  Importe um arquivo <strong>XML / PDF / CSV</strong> ou clique em <strong>"Carregar Dados de Exemplo"</strong> acima.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Conteúdo Aba 2: Sugestão de Pedido -->
+      <div id="abaPedido" class="p-4 sm:p-6 hidden">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 bg-blue-50 border border-blue-100 p-3.5 rounded-lg">
+          <div class="text-xs text-blue-900">
+            <strong>Motor de Reposição:</strong> Calcula a diferença entre a cobertura alvo (com elasticidade sazonal) e o estoque atual.
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="copiarResumoPedido()" class="bg-white border border-blue-300 hover:bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer">
+              Copiar Resumo p/ Comprador
+            </button>
+            <button onclick="exportarPedidoCSV()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer">
+              Exportar Pedido (.CSV)
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase">
+                <th class="py-3 px-3">Loja</th>
+                <th class="py-3 px-3">SKU / Produto</th>
+                <th class="py-3 px-3 text-right">Est. Atual</th>
+                <th class="py-3 px-3 text-right">Reposição Base</th>
+                <th class="py-3 px-3 text-right text-amber-700">Pulmão Sazonal</th>
+                <th class="py-3 px-3 text-right text-blue-700">Pedido Sugerido</th>
+                <th class="py-3 px-3 text-right">Valor Est.</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaPedidoBody" class="divide-y divide-slate-100 text-sm"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Conteúdo Aba 3: Radar de Baixo Giro -->
+      <div id="abaBaixoGiro" class="p-4 sm:p-6 hidden">
+        <div class="mb-4 bg-purple-50 border border-purple-100 p-3.5 rounded-lg text-xs text-purple-900">
+          <strong>Inteligência de Giro:</strong> Identifica itens com cobertura superior a 45 dias ou sem venda no período, cruzando automaticamente com outras filiais em ruptura para sugerir remanejamento.
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase">
+                <th class="py-3 px-3">Loja</th>
+                <th class="py-3 px-3">SKU / Produto</th>
+                <th class="py-3 px-3 text-right">Estoque Parado</th>
+                <th class="py-3 px-3 text-right">Venda (30d)</th>
+                <th class="py-3 px-3 text-right">Cobertura</th>
+                <th class="py-3 px-3 text-right">Capital Travado</th>
+                <th class="py-3 px-3">Ação Comercial Recomendada</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaBaixoGiroBody" class="divide-y divide-slate-100 text-sm"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <script>
+    let dadosBrutos = [];
+    let dadosProcessados = [];
+
+    // Formatação Moeda BRL
+    const fmtBRL = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const fmtNum = (v) => v.toLocaleString('pt-BR');
+
+    // Escapa texto vindo de arquivos importados antes de inserir no HTML
+    const esc = (v) => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    // Converte número em formato BR ("1.234,56") ou US ("1234.56")
+    function parseNumero(v) {
+      let s = String(v ?? '').trim().replace(/[^\d,.\-]/g, '');
+      if (!s) return 0;
+      if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+      const n = parseFloat(s);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    // Dispara download de um Blob
+    function baixarArquivo(conteudo, tipo, nome) {
+      const blob = new Blob([conteudo], { type: tipo });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nome;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    // Navegação entre abas
+    const ABAS = {
+      saude: { painel: 'abaSaude', botao: 'tabBtnSaude' },
+      pedido: { painel: 'abaPedido', botao: 'tabBtnPedido' },
+      baixogiro: { painel: 'abaBaixoGiro', botao: 'tabBtnBaixoGiro' }
+    };
+
+    function mudarAba(aba) {
+      Object.entries(ABAS).forEach(([chave, { painel, botao }]) => {
+        const ativa = chave === aba;
+        document.getElementById(painel).classList.toggle('hidden', !ativa);
+        const btn = document.getElementById(botao);
+        btn.classList.toggle('tab-active', ativa);
+        btn.classList.toggle('text-slate-500', !ativa);
+      });
+    }
+
+    // Controles Sazonais
+    function aplicarPresetSazonal() {
+      const val = document.getElementById('presetSazonal').value;
+      document.getElementById('sliderSazonal').value = val;
+      atualizarBadgeSazonal(val);
+      recalcularTudo();
+    }
+
+    function atualizarSliderSazonal() {
+      const val = document.getElementById('sliderSazonal').value;
+      const preset = document.getElementById('presetSazonal');
+      const existe = [...preset.options].some(o => o.value === val);
+      preset.value = existe ? val : 'custom';
+      atualizarBadgeSazonal(val);
+      recalcularTudo();
+    }
+
+    function atualizarBadgeSazonal(val) {
+      const badge = document.getElementById('badgeSazonal');
+      badge.textContent = `+${val}% Demanda`;
+      badge.className = Number(val) > 0
+        ? 'bg-amber-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full'
+        : 'bg-slate-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full';
+    }
+
+    // Dados de Demonstração (Cenário Realista de Varejo Alimentar)
+    function carregarDadosExemplo() {
+      dadosBrutos = [
+        { loja: 'Loja 01 - Centro', sku: '7891001', descricao: 'Leite de Coco Tradicional 200ml', estoque: 18, venda30d: 240, custo: 3.40 },
+        { loja: 'Loja 01 - Centro', sku: '7891002', descricao: 'Coco Ralado Úmido Adoçado 100g', estoque: 45, venda30d: 150, custo: 2.90 },
+        { loja: 'Loja 01 - Centro', sku: '7891003', descricao: 'Água de Coco Integral 1L', estoque: 0, venda30d: 310, custo: 6.80 },
+        { loja: 'Loja 01 - Centro', sku: '7891004', descricao: 'Óleo de Coco Extra Virgem 200ml', estoque: 95, venda30d: 24, custo: 16.50 },
+        { loja: 'Loja 01 - Centro', sku: '7891005', descricao: 'Leite de Coco Culinário 500ml', estoque: 110, venda30d: 135, custo: 6.90 },
+
+        { loja: 'Loja 02 - Zona Sul', sku: '7891001', descricao: 'Leite de Coco Tradicional 200ml', estoque: 90, venda30d: 180, custo: 3.40 },
+        { loja: 'Loja 02 - Zona Sul', sku: '7891002', descricao: 'Coco Ralado Úmido Adoçado 100g', estoque: 12, venda30d: 190, custo: 2.90 },
+        { loja: 'Loja 02 - Zona Sul', sku: '7891003', descricao: 'Água de Coco Integral 1L', estoque: 140, venda30d: 45, custo: 6.80 },
+        { loja: 'Loja 02 - Zona Sul', sku: '7891004', descricao: 'Óleo de Coco Extra Virgem 200ml', estoque: 4, venda30d: 60, custo: 16.50 },
+        { loja: 'Loja 02 - Zona Sul', sku: '7891006', descricao: 'Farinha de Coco Branca 250g', estoque: 42, venda30d: 0, custo: 7.20 },
+
+        { loja: 'Loja 03 - Atacado Norte', sku: '7891001', descricao: 'Leite de Coco Tradicional 200ml', estoque: 480, venda30d: 600, custo: 3.40 },
+        { loja: 'Loja 03 - Atacado Norte', sku: '7891003', descricao: 'Água de Coco Integral 1L', estoque: 35, venda30d: 540, custo: 6.80 },
+        { loja: 'Loja 03 - Atacado Norte', sku: '7891005', descricao: 'Leite de Coco Culinário 500ml', estoque: 320, venda30d: 90, custo: 6.90 }
+      ];
+      popularFiltroLojas();
+      recalcularTudo();
+    }
+
+    // Popular dropdown de lojas
+    function popularFiltroLojas() {
+      const select = document.getElementById('filtroLoja');
+      const lojas = [...new Set(dadosBrutos.map(d => d.loja))].sort();
+      select.innerHTML = '';
+      const todas = document.createElement('option');
+      todas.value = 'TODAS';
+      todas.textContent = `Todas as Lojas (${lojas.length})`;
+      select.appendChild(todas);
+      lojas.forEach(l => {
+        const opt = document.createElement('option');
+        opt.value = l;
+        opt.textContent = l;
+        select.appendChild(opt);
+      });
+    }
+
+    function aplicarDadosImportados(parsed, origem) {
+      if (parsed.length === 0) throw new Error(`Nenhum item válido encontrado no ${origem}.`);
+      dadosBrutos = parsed;
+      popularFiltroLojas();
+      recalcularTudo();
+    }
+
+    // Upload e Parse de XML / PDF / CSV
+    async function handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const ext = file.name.split('.').pop().toLowerCase();
+      try {
+        if (ext === 'xml') {
+          parseXML(await file.text());
+        } else if (ext === 'pdf') {
+          await parsePDF(file);
+        } else if (ext === 'csv') {
+          parseCSV(await file.text());
+        } else {
+          alert('Formato não suportado. Utilize XML, PDF ou CSV.');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Erro ao ler o arquivo: ' + err.message);
+      }
+      event.target.value = '';
+    }
+
+    // Leitor Nativo de XML
+    function parseXML(xmlText) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlText, 'text/xml');
+      if (doc.querySelector('parsererror')) {
+        throw new Error('XML inválido ou mal formatado.');
+      }
+
+      // Busca nós comuns de itens de estoque/ERP, ignorando nós aninhados
+      // dentro de outro nó já capturado (ex.: <produto> dentro de <item>)
+      const seletor = 'item, produto, registro, row, det';
+      const nodes = Array.from(doc.querySelectorAll(seletor))
+        .filter(n => !n.parentElement || !n.parentElement.closest(seletor));
+      if (nodes.length === 0) {
+        throw new Error('Nenhuma tag de produto (<item>, <produto>, <registro>) encontrada no XML.');
+      }
+
+      const getVal = (el, tags) => {
+        for (const t of tags) {
+          const child = el.querySelector(t);
+          if (child && child.textContent.trim()) return child.textContent.trim();
+          const attr = el.getAttribute(t);
+          if (attr && attr.trim()) return attr.trim();
+        }
+        return '';
+      };
+
+      const parsed = nodes.map(node => ({
+        loja: getVal(node, ['loja', 'filial', 'unidade', 'cd']) || 'Matriz / Padrão',
+        sku: getVal(node, ['sku', 'codigo', 'cod', 'ean', 'cProd']) || 'S/C',
+        descricao: getVal(node, ['descricao', 'nome', 'produto', 'xProd']) || 'Produto sem descrição',
+        estoque: parseNumero(getVal(node, ['estoque', 'saldo', 'qtd_estoque', 'qEst'])),
+        venda30d: parseNumero(getVal(node, ['venda30d', 'venda', 'saida', 'qtd_venda', 'qCom'])),
+        custo: parseNumero(getVal(node, ['custo', 'valor', 'preco', 'vUnCom']))
+      })).filter(i => i.sku !== 'S/C' || i.descricao !== 'Produto sem descrição');
+
+      aplicarDadosImportados(parsed, 'XML');
+    }
+
+    // Leitor de PDF via PDF.js
+    async function parsePDF(file) {
+      if (!window.pdfjsLib) throw new Error('Leitor de PDF não carregou (verifique a conexão).');
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let textoCompleto = '';
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        // Agrupa itens por posição vertical (Y) aproximada para reconstruir linhas
+        const linhasMap = {};
+        content.items.forEach(item => {
+          const y = Math.round(item.transform[5] / 4) * 4;
+          if (!linhasMap[y]) linhasMap[y] = [];
+          linhasMap[y].push({ x: item.transform[4], str: item.str });
+        });
+
+        const ys = Object.keys(linhasMap).sort((a, b) => b - a);
+        ys.forEach(y => {
+          const linha = linhasMap[y].sort((a, b) => a.x - b.x).map(i => i.str).join(' ');
+          textoCompleto += linha.replace(/\s+/g, ' ') + '\n';
+        });
+      }
+
+      if (textoCompleto.trim().length < 20) {
+        throw new Error('Este PDF parece ser uma imagem escaneada sem camada de texto.');
+      }
+
+      // Regex flexível para linhas tabulares: [SKU] [Descrição] [Estoque] [Venda] [Custo opcional]
+      const num = '(\\d+(?:\\.\\d{3})*(?:,\\d+)?|\\d+(?:\\.\\d+)?)';
+      const regexLinha = new RegExp(`^(\\d{4,14})\\s+(.+?)\\s+${num}\\s+${num}(?:\\s+${num})?$`);
+      const parsed = [];
+
+      textoCompleto.split('\n').forEach(l => {
+        const match = l.trim().match(regexLinha);
+        if (match) {
+          parsed.push({
+            loja: 'Relatório PDF',
+            sku: match[1],
+            descricao: match[2].trim(),
+            estoque: parseNumero(match[3]),
+            venda30d: parseNumero(match[4]),
+            custo: match[5] ? parseNumero(match[5]) : 0
+          });
+        }
+      });
+
+      if (parsed.length === 0) {
+        throw new Error('Texto extraído, mas o layout tabular do PDF precisa de mapeamento customizado.');
+      }
+
+      aplicarDadosImportados(parsed, 'PDF');
+    }
+
+    // Divide uma linha CSV respeitando aspas
+    function dividirLinhaCSV(linha, sep) {
+      const cols = [];
+      let atual = '', aspas = false;
+      for (let i = 0; i < linha.length; i++) {
+        const ch = linha[i];
+        if (ch === '"') {
+          if (aspas && linha[i + 1] === '"') { atual += '"'; i++; }
+          else aspas = !aspas;
+        } else if (ch === sep && !aspas) {
+          cols.push(atual.trim()); atual = '';
+        } else {
+          atual += ch;
+        }
+      }
+      cols.push(atual.trim());
+      return cols;
+    }
+
+    // Leitor CSV (separado por ; ou ,). Colunas: Loja;SKU;Descrição;Estoque;Venda30d;Custo
+    function parseCSV(text) {
+      const linhasTodas = text.replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
+      const sep = linhasTodas[0] && linhasTodas[0].includes(';') ? ';' : ',';
+      const parsed = linhasTodas.slice(1).map(l => {
+        const c = dividirLinhaCSV(l, sep);
+        return {
+          loja: c[0] || 'Matriz',
+          sku: c[1] || 'S/C',
+          descricao: c[2] || 'Produto',
+          estoque: parseNumero(c[3]),
+          venda30d: parseNumero(c[4]),
+          custo: parseNumero(c[5])
+        };
+      }).filter(i => i.sku !== 'S/C');
+
+      aplicarDadosImportados(parsed, 'CSV');
+    }
+
+    // Motor Principal de Cálculo
+    function recalcularTudo() {
+      if (dadosBrutos.length === 0) return;
+
+      const leadTime = Math.max(1, Number(document.getElementById('leadTimeInput').value) || 7);
+      const coberturaAlvo = Math.max(1, Number(document.getElementById('coberturaAlvoInput').value) || 25);
+      const sazonalPct = Number(document.getElementById('sliderSazonal').value) || 0;
+      const lojaSelecionada = document.getElementById('filtroLoja').value;
+      const termoBusca = document.getElementById('buscaInput').value.toLowerCase().trim();
+
+      const fatorSazonal = 1 + (sazonalPct / 100);
+
+      // Mapeia lojas em ruptura/crítico por SKU (para sugerir transferência na aba Baixo Giro)
+      const rupturasPorSku = {};
+      dadosBrutos.forEach(item => {
+        const vmd = item.venda30d / 30;
+        if (vmd <= 0) return;
+        const cob = item.estoque / vmd;
+        if (cob <= leadTime) {
+          if (!rupturasPorSku[item.sku]) rupturasPorSku[item.sku] = [];
+          rupturasPorSku[item.sku].push({ loja: item.loja, cob });
+        }
+      });
+      // Prioriza a loja com menor cobertura
+      Object.values(rupturasPorSku).forEach(lista => lista.sort((a, b) => a.cob - b.cob));
+
+      // Filtra e processa
+      dadosProcessados = dadosBrutos
+        .filter(item => lojaSelecionada === 'TODAS' || item.loja === lojaSelecionada)
+        .filter(item => !termoBusca || String(item.sku).toLowerCase().includes(termoBusca) || String(item.descricao).toLowerCase().includes(termoBusca))
+        .map(item => {
+          const vmdBase = item.venda30d / 30;
+          const vmdProjetada = vmdBase * fatorSazonal;
+          const coberturaDias = vmdBase > 0 ? Math.round(item.estoque / vmdBase) : (item.estoque > 0 ? 999 : 0);
+
+          // Classificação de Saúde
+          let status = 'SAUDÁVEL';
+          let badgeClass = 'bg-emerald-100 text-emerald-800';
+          let prioridade = 3;
+
+          if (item.estoque <= 0 && item.venda30d > 0) {
+            status = 'RUPTURA';
+            badgeClass = 'bg-red-600 text-white font-bold';
+            prioridade = 1;
+          } else if (vmdBase === 0 && item.estoque > 0) {
+            status = 'SEM GIRO';
+            badgeClass = 'bg-purple-100 text-purple-800';
+            prioridade = 4;
+          } else if (vmdBase === 0) {
+            status = 'INATIVO';
+            badgeClass = 'bg-slate-100 text-slate-600';
+            prioridade = 5;
+          } else if (coberturaDias <= leadTime) {
+            status = 'CRÍTICO';
+            badgeClass = 'bg-red-100 text-red-800 font-semibold';
+            prioridade = 1;
+          } else if (coberturaDias <= Math.max(leadTime + 7, Math.round(coberturaAlvo * 0.65))) {
+            status = 'ATENÇÃO';
+            badgeClass = 'bg-amber-100 text-amber-800 font-semibold';
+            prioridade = 2;
+          } else if (coberturaDias > 45) {
+            status = 'BAIXO GIRO';
+            badgeClass = 'bg-purple-100 text-purple-800';
+            prioridade = 4;
+          }
+
+          // Cálculo de Pedido Sugerido
+          const estoqueUtil = Math.max(0, item.estoque);
+          const reqBase = Math.max(0, Math.ceil((vmdBase * coberturaAlvo) - estoqueUtil));
+          const pedidoSugerido = Math.max(0, Math.ceil((vmdProjetada * coberturaAlvo) - estoqueUtil));
+          const pulmaoSazonal = Math.max(0, pedidoSugerido - reqBase);
+          const valorPedido = pedidoSugerido * item.custo;
+
+          // Excesso acima de 45 dias
+          const estoqueIdealMax = Math.ceil(vmdBase * 45);
+          const excessoUn = coberturaDias > 45 ? Math.max(0, item.estoque - estoqueIdealMax) : 0;
+          const capitalParado = excessoUn * item.custo;
+
+          // Ação recomendada para baixo giro
+          const lojasEmFalta = (rupturasPorSku[item.sku] || []).filter(r => r.loja !== item.loja);
+          let acaoBaixoGiro = 'Ação de Sell-Out / Tabloide';
+          if (lojasEmFalta.length > 0) {
+            const destino = lojasEmFalta[0];
+            const situacao = destino.cob === 0 ? 'em ruptura' : 'em risco crítico';
+            acaoBaixoGiro = `Transferir p/ ${destino.loja} (${situacao})`;
+          } else if (vmdBase === 0) {
+            acaoBaixoGiro = 'Avaliar troca de mix / bonificação';
+          }
+
+          return {
+            ...item,
+            vmdBase,
+            vmdProjetada,
+            coberturaDias,
+            status,
+            badgeClass,
+            prioridade,
+            reqBase,
+            pulmaoSazonal,
+            pedidoSugerido,
+            valorPedido,
+            excessoUn,
+            capitalParado,
+            acaoBaixoGiro
+          };
+        });
+
+      atualizarKPIs();
+      renderizarTabelas();
+    }
+
+    function atualizarKPIs() {
+      const totalSkus = dadosProcessados.length;
+      const estoqueTotal = dadosProcessados.reduce((acc, i) => acc + i.estoque, 0);
+      const criticos = dadosProcessados.filter(i => i.status === 'RUPTURA' || i.status === 'CRÍTICO').length;
+      const atencao = dadosProcessados.filter(i => i.status === 'ATENÇÃO').length;
+      const pedidoUn = dadosProcessados.reduce((acc, i) => acc + i.pedidoSugerido, 0);
+      const pedidoVal = dadosProcessados.reduce((acc, i) => acc + i.valorPedido, 0);
+      const baixoGiroItens = dadosProcessados.filter(i => i.status === 'BAIXO GIRO' || i.status === 'SEM GIRO');
+      const capitalParado = baixoGiroItens.reduce((acc, i) => acc + i.capitalParado, 0);
+      const sazonal = Number(document.getElementById('sliderSazonal').value) || 0;
+
+      document.getElementById('kpiTotalSkus').textContent = fmtNum(totalSkus);
+      document.getElementById('kpiEstoqueTotal').textContent = `${fmtNum(estoqueTotal)} un. em estoque atual`;
+      document.getElementById('kpiCriticos').textContent = `${criticos} itens`;
+      document.getElementById('kpiAtencao').textContent = `+ ${atencao} itens em ponto de pedido`;
+      document.getElementById('kpiPedidoUn').textContent = `${fmtNum(pedidoUn)} un.`;
+      document.getElementById('kpiPedidoValor').textContent = `Est. ${fmtBRL(pedidoVal)}${sazonal > 0 ? ` (inclui +${sazonal}% sazonal)` : ''}`;
+      document.getElementById('kpiBaixoGiro').textContent = `${baixoGiroItens.length} itens`;
+      document.getElementById('kpiCapitalParado').textContent = `${fmtBRL(capitalParado)} parados em excesso`;
+    }
+
+    function renderizarTabelas() {
+      // 1. Tabela Saúde (Ordenada por prioridade de risco)
+      const ordenadosSaude = [...dadosProcessados].sort((a, b) => a.prioridade - b.prioridade || a.coberturaDias - b.coberturaDias);
+      document.getElementById('tabelaSaudeBody').innerHTML = ordenadosSaude.length === 0
+        ? `<tr><td colspan="8" class="py-8 text-center text-slate-400">Nenhum item encontrado para o filtro atual.</td></tr>`
+        : ordenadosSaude.map(i => `
+        <tr class="hover:bg-slate-50">
+          <td class="py-2.5 px-3 text-xs font-medium text-slate-600">${esc(i.loja)}</td>
+          <td class="py-2.5 px-3 font-mono text-xs text-slate-500">${esc(i.sku)}</td>
+          <td class="py-2.5 px-3 font-medium text-slate-800">${esc(i.descricao)}</td>
+          <td class="py-2.5 px-3 text-right font-semibold">${fmtNum(i.estoque)}</td>
+          <td class="py-2.5 px-3 text-right text-slate-600">${fmtNum(i.venda30d)}</td>
+          <td class="py-2.5 px-3 text-right text-slate-600">${i.vmdBase.toFixed(1)}/dia</td>
+          <td class="py-2.5 px-3 text-right font-semibold">${i.coberturaDias === 999 ? '∞' : i.coberturaDias + ' dias'}</td>
+          <td class="py-2.5 px-3 text-center">
+            <span class="px-2.5 py-1 rounded-full text-[11px] ${i.badgeClass}">${i.status}</span>
+          </td>
+        </tr>
+      `).join('');
+
+      // 2. Tabela Sugestão de Pedido (Apenas itens com pedido > 0)
+      const itensPedido = dadosProcessados.filter(i => i.pedidoSugerido > 0).sort((a, b) => b.pedidoSugerido - a.pedidoSugerido);
+      document.getElementById('tabelaPedidoBody').innerHTML = itensPedido.length === 0
+        ? `<tr><td colspan="7" class="py-8 text-center text-slate-400">Nenhum item precisa de reposição para os parâmetros atuais.</td></tr>`
+        : itensPedido.map(i => `
+          <tr class="hover:bg-slate-50">
+            <td class="py-2.5 px-3 text-xs font-medium text-slate-600">${esc(i.loja)}</td>
+            <td class="py-2.5 px-3">
+              <span class="font-mono text-xs text-slate-400 mr-1">${esc(i.sku)}</span>
+              <span class="font-medium text-slate-800">${esc(i.descricao)}</span>
+            </td>
+            <td class="py-2.5 px-3 text-right text-slate-600">${fmtNum(i.estoque)}</td>
+            <td class="py-2.5 px-3 text-right text-slate-700">${fmtNum(i.reqBase)}</td>
+            <td class="py-2.5 px-3 text-right font-medium text-amber-700">+${fmtNum(i.pulmaoSazonal)}</td>
+            <td class="py-2.5 px-3 text-right font-bold text-blue-700">${fmtNum(i.pedidoSugerido)} un.</td>
+            <td class="py-2.5 px-3 text-right font-medium text-slate-700">${fmtBRL(i.valorPedido)}</td>
+          </tr>
+        `).join('');
+
+      // 3. Tabela Baixo Giro
+      const itensBaixoGiro = dadosProcessados.filter(i => i.status === 'BAIXO GIRO' || i.status === 'SEM GIRO').sort((a, b) => b.capitalParado - a.capitalParado);
+      document.getElementById('tabelaBaixoGiroBody').innerHTML = itensBaixoGiro.length === 0
+        ? `<tr><td colspan="7" class="py-8 text-center text-slate-400">Nenhum item em excesso ou baixo giro detectado.</td></tr>`
+        : itensBaixoGiro.map(i => `
+          <tr class="hover:bg-slate-50">
+            <td class="py-2.5 px-3 text-xs font-medium text-slate-600">${esc(i.loja)}</td>
+            <td class="py-2.5 px-3">
+              <span class="font-mono text-xs text-slate-400 mr-1">${esc(i.sku)}</span>
+              <span class="font-medium text-slate-800">${esc(i.descricao)}</span>
+            </td>
+            <td class="py-2.5 px-3 text-right font-semibold">${fmtNum(i.estoque)}</td>
+            <td class="py-2.5 px-3 text-right text-slate-600">${fmtNum(i.venda30d)}</td>
+            <td class="py-2.5 px-3 text-right font-semibold text-purple-700">${i.coberturaDias === 999 ? 'Sem saída' : i.coberturaDias + ' dias'}</td>
+            <td class="py-2.5 px-3 text-right font-semibold text-slate-800">${fmtBRL(i.capitalParado)}</td>
+            <td class="py-2.5 px-3">
+              <span class="bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-1 rounded-md">${esc(i.acaoBaixoGiro)}</span>
+            </td>
+          </tr>
+        `).join('');
+    }
+
+    // Exportar Pedido CSV (com BOM UTF-8 para Excel)
+    function exportarPedidoCSV() {
+      const itens = dadosProcessados.filter(i => i.pedidoSugerido > 0);
+      if (itens.length === 0) return alert('Não há itens na sugestão de pedido para exportar.');
+
+      const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+      let csv = '﻿Loja;SKU;Produto;Estoque Atual;Reposicao Base;Pulmao Sazonal;Pedido Sugerido;Valor Estimado\n';
+      itens.forEach(i => {
+        csv += `${q(i.loja)};${q(i.sku)};${q(i.descricao)};${i.estoque};${i.reqBase};${i.pulmaoSazonal};${i.pedidoSugerido};${q(i.valorPedido.toFixed(2).replace('.', ','))}\n`;
+      });
+
+      baixarArquivo(csv, 'text/csv;charset=utf-8;', 'sugestao-pedido-reposicao.csv');
+    }
+
+    // Copiar Resumo Executivo para WhatsApp/E-mail
+    async function copiarResumoPedido() {
+      const itens = dadosProcessados.filter(i => i.pedidoSugerido > 0).sort((a, b) => b.valorPedido - a.valorPedido);
+      if (itens.length === 0) return alert('Não há itens na sugestão de pedido.');
+
+      const sazonal = document.getElementById('sliderSazonal').value;
+      const totalUn = itens.reduce((acc, i) => acc + i.pedidoSugerido, 0);
+      const totalVal = itens.reduce((acc, i) => acc + i.valorPedido, 0);
+
+      let texto = `*SUGESTÃO DE PEDIDO & REPOSIÇÃO*\n`;
+      texto += `Cenário Sazonal: +${sazonal}% | Volume Total: ${fmtNum(totalUn)} un. (${fmtBRL(totalVal)})\n\n`;
+      itens.slice(0, 15).forEach(i => {
+        texto += `• [${i.loja}] ${i.descricao} (SKU ${i.sku}): *+${fmtNum(i.pedidoSugerido)} un.* (Est. atual: ${i.estoque})\n`;
+      });
+      if (itens.length > 15) texto += `... e mais ${itens.length - 15} itens na planilha completa.`;
+
+      try {
+        await navigator.clipboard.writeText(texto);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = texto;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      alert('Resumo copiado! Basta colar no WhatsApp ou e-mail do comprador.');
+    }
+
+    // Gerar XML Modelo para Teste de Upload
+    function baixarXmlModelo() {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<posicao_estoque>
+  <item>
+    <loja>Rede Exemplo - Loja 01</loja>
+    <sku>102030</sku>
+    <descricao>Produto Linha A 200ml</descricao>
+    <estoque>15</estoque>
+    <venda30d>210</venda30d>
+    <custo>4.50</custo>
+  </item>
+  <item>
+    <loja>Rede Exemplo - Loja 01</loja>
+    <sku>102031</sku>
+    <descricao>Produto Linha B 1L</descricao>
+    <estoque>180</estoque>
+    <venda30d>45</venda30d>
+    <custo>8.90</custo>
+  </item>
+  <item>
+    <loja>Rede Exemplo - Loja 02</loja>
+    <sku>102030</sku>
+    <descricao>Produto Linha A 200ml</descricao>
+    <estoque>130</estoque>
+    <venda30d>30</venda30d>
+    <custo>4.50</custo>
+  </item>
+</posicao_estoque>`;
+
+      baixarArquivo(xml, 'application/xml;charset=utf-8;', 'modelo-estoque-cliente.xml');
+    }
+  </script>
+</body>
+</html>

@@ -54,7 +54,7 @@
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
 
         <!-- Parâmetros Operacionais -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 flex-1">
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 flex-1">
           <div>
             <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Lead Time Entrega (Dias)</label>
             <input type="number" id="leadTimeInput" value="7" min="1" max="60" oninput="recalcularTudo()"
@@ -76,6 +76,15 @@
               <option value="TODAS">Todas as Lojas</option>
             </select>
             <span class="text-[11px] text-slate-400">Visão consolidada ou filial</span>
+          </div>
+
+          <div>
+            <span class="block text-xs font-semibold text-slate-500 uppercase mb-1">Base de Venda</span>
+            <div class="grid grid-cols-2 rounded-lg border border-slate-300 overflow-hidden" role="group" aria-label="Base de venda para cobertura">
+              <button type="button" id="baseBtnMes" onclick="definirBaseVenda('mes')" class="px-2 py-2 text-sm font-semibold cursor-pointer">Último mês</button>
+              <button type="button" id="baseBtnMedia" onclick="definirBaseVenda('media')" class="px-2 py-2 text-sm font-semibold cursor-pointer border-l border-slate-300">Média 3m</button>
+            </div>
+            <span id="baseVendaInfo" class="block text-[11px] text-slate-400 truncate">Usada na cobertura e no destaque</span>
           </div>
 
         </div>
@@ -182,7 +191,8 @@
                 <th class="py-3 px-3">SKU</th>
                 <th class="py-3 px-3">Produto</th>
                 <th class="py-3 px-3 text-right">Estoque</th>
-                <th class="py-3 px-3 text-right">Venda (30d)</th>
+                <th id="thVendaMes" class="py-3 px-3 text-right">Venda Mês</th>
+                <th id="thVendaMedia" class="py-3 px-3 text-right">Média 3 Meses</th>
                 <th class="py-3 px-3 text-right">VMD</th>
                 <th class="py-3 px-3 text-right">Cobertura</th>
                 <th class="py-3 px-3 text-center">Status Saúde</th>
@@ -190,7 +200,7 @@
             </thead>
             <tbody id="tabelaSaudeBody" class="divide-y divide-slate-100 text-sm">
               <tr>
-                <td colspan="8" class="py-10 text-center text-slate-400">
+                <td colspan="9" class="py-10 text-center text-slate-400">
                   Importe um arquivo <strong>Excel / XML / PDF / CSV</strong> ou clique em <strong>"Carregar Dados de Exemplo"</strong> acima.
                 </td>
               </tr>
@@ -255,7 +265,7 @@
                 <th class="py-3 px-3">Loja</th>
                 <th class="py-3 px-3">SKU / Produto</th>
                 <th class="py-3 px-3 text-right">Estoque Parado</th>
-                <th class="py-3 px-3 text-right">Venda (30d)</th>
+                <th class="py-3 px-3 text-right">Venda Base (mês)</th>
                 <th class="py-3 px-3 text-right">Cobertura</th>
                 <th class="py-3 px-3 text-right">Capital Travado</th>
                 <th class="py-3 px-3">Ação Comercial Recomendada</th>
@@ -276,6 +286,55 @@
     // Formatação Moeda BRL
     const fmtBRL = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     const fmtNum = (v) => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+
+    // ---------- Base de venda (último mês ou média de 3 meses) ----------
+    let baseVenda = 'mes';
+    try { if (localStorage.getItem('radarEstoque.baseVenda') === 'media') baseVenda = 'media'; } catch { /* ignora */ }
+    let infoVendas = { mes: [], media: [] }; // nomes das colunas de venda reconhecidas no último arquivo
+
+    const temVendaMes = () => dadosBrutos.some(i => i.venda30d != null);
+    const temMedia3m = () => dadosBrutos.some(i => i.media3m != null);
+
+    // Base efetiva: a escolhida; se o item não tiver, usa a outra
+    function baseEfetiva() {
+      if (baseVenda === 'media' && !temMedia3m()) return 'mes';
+      if (baseVenda === 'mes' && !temVendaMes() && temMedia3m()) return 'media';
+      return baseVenda;
+    }
+    function vendaBaseDe(item) {
+      const v = baseEfetiva() === 'media' ? (item.media3m ?? item.venda30d) : (item.venda30d ?? item.media3m);
+      return v ?? 0;
+    }
+
+    function definirBaseVenda(base) {
+      baseVenda = base;
+      try { localStorage.setItem('radarEstoque.baseVenda', base); } catch { /* ignora */ }
+      recalcularTudo();
+      renderizarBaseVenda();
+    }
+
+    function renderizarBaseVenda() {
+      const efetiva = dadosBrutos.length ? baseEfetiva() : baseVenda;
+      const ativo = 'bg-blue-600 text-white';
+      const inativo = 'bg-white text-slate-700 hover:bg-slate-100';
+      const desab = 'bg-slate-100 text-slate-400 cursor-not-allowed';
+      const semMes = dadosBrutos.length > 0 && !temVendaMes();
+      const semMedia = dadosBrutos.length > 0 && !temMedia3m();
+      const bMes = document.getElementById('baseBtnMes');
+      const bMed = document.getElementById('baseBtnMedia');
+      bMes.disabled = semMes; bMed.disabled = semMedia;
+      bMes.className = `px-2 py-2 text-sm font-semibold ${semMes ? desab : (efetiva === 'mes' ? ativo : inativo + ' cursor-pointer')}`;
+      bMed.className = `px-2 py-2 text-sm font-semibold border-l border-slate-300 ${semMedia ? desab : (efetiva === 'media' ? ativo : inativo + ' cursor-pointer')}`;
+      bMes.title = semMes ? 'O arquivo não tem venda do último mês' : '';
+      bMed.title = semMedia ? 'O arquivo não tem vendas de mais de um mês' : '';
+
+      const info = document.getElementById('baseVendaInfo');
+      const nomes = efetiva === 'media' ? infoVendas.media : infoVendas.mes;
+      info.textContent = nomes.length ? `Lido de: ${nomes.join(', ')}` : 'Usada na cobertura e no destaque';
+      info.title = info.textContent;
+      document.getElementById('thVendaMes').className = `py-3 px-3 text-right ${efetiva === 'mes' ? 'text-blue-700' : ''}`;
+      document.getElementById('thVendaMedia').className = `py-3 px-3 text-right ${efetiva === 'media' ? 'text-blue-700' : ''}`;
+    }
 
     // ---------- Unidade (unidade ou caixa) ----------
     // Padrão geral + ajustes por SKU. Guardado só neste navegador.
@@ -519,6 +578,10 @@
         { loja: 'Loja 03 - Atacado Norte', sku: '7891005', descricao: 'Leite de Coco Culinário 500ml', estoque: 320, venda30d: 90, custo: 6.90 }
       ];
       // Exemplo: embalagem por SKU (unidades por caixa)
+      // Exemplo: média mensal dos últimos 3 meses (diferente do último mês para mostrar a escolha)
+      const variacao = [0.85, 1.1, 0.7, 1.3, 0.95, 1, 0.8, 1.2, 0.9, 1, 1.05, 0.75, 1.15];
+      dadosBrutos.forEach((i, k) => { i.media3m = Math.round(i.venda30d * variacao[k % variacao.length]); });
+      infoVendas = { mes: ['Venda Mês (exemplo)'], media: ['Vendas 3 meses (exemplo)'] };
       const embalagens = { '7891001': 24, '7891002': 24, '7891003': 12, '7891004': 12, '7891005': 12, '7891006': 20 };
       dadosBrutos.forEach(i => { i.unPorCaixa = embalagens[i.sku] || 0; });
       popularFiltroLojas();
@@ -606,12 +669,27 @@
         sku: getVal(node, ['sku', 'codigo', 'cod', 'ean', 'cProd']) || 'S/C',
         descricao: getVal(node, ['descricao', 'nome', 'produto', 'xProd']) || 'Produto sem descrição',
         estoque: parseNumero(getVal(node, ['estoque', 'saldo', 'qtd_estoque', 'qEst'])),
-        venda30d: parseNumero(getVal(node, ['venda30d', 'venda', 'saida', 'qtd_venda', 'qCom'])),
+        ...vendasDoNoXML(node),
         custo: parseNumero(getVal(node, ['custo', 'valor', 'preco', 'vUnCom'])),
         unPorCaixa: parseNumero(getVal(node, ['un_por_caixa', 'unPorCaixa', 'unidades_por_caixa', 'qtd_caixa', 'embalagem', 'fator', 'multiplo']))
       })).filter(i => i.sku !== 'S/C' || i.descricao !== 'Produto sem descrição');
 
+      if (nodes.length) infoVendas = nomesVendas(detectarColunasVenda(camposDoNoXML(nodes[0]).nomes));
       aplicarDadosImportados(parsed, 'XML');
+    }
+
+    // Lê as tags filhas e atributos de um nó XML como se fossem colunas
+    function camposDoNoXML(node) {
+      const filhos = [...node.children];
+      const attrs = [...node.attributes];
+      return {
+        nomes: filhos.map(c => c.tagName).concat(attrs.map(a => a.name)),
+        valores: filhos.map(c => c.textContent.trim()).concat(attrs.map(a => a.value))
+      };
+    }
+    function vendasDoNoXML(node) {
+      const { nomes, valores } = camposDoNoXML(node);
+      return lerVendas(detectarColunasVenda(nomes), valores);
     }
 
     // Leitor de PDF via PDF.js
@@ -657,6 +735,7 @@
             descricao: match[2].trim(),
             estoque: parseNumero(match[3]),
             venda30d: parseNumero(match[4]),
+            media3m: null,
             custo: match[5] ? parseNumero(match[5]) : 0
           });
         }
@@ -666,6 +745,7 @@
         throw new Error('Texto extraído, mas o layout tabular do PDF precisa de mapeamento customizado.');
       }
 
+      infoVendas = { mes: ['4ª coluna do PDF'], media: [] };
       aplicarDadosImportados(parsed, 'PDF');
     }
 
@@ -702,29 +782,126 @@
       sku: ['sku', 'codigo', 'cod', 'ean', 'cprod', 'codproduto', 'codigoproduto', 'codigointerno', 'gtin', 'referencia', 'ref'],
       descricao: ['descricao', 'descricaoproduto', 'nome', 'nomeproduto', 'produto', 'xprod', 'desc', 'item'],
       estoque: ['estoque', 'estoqueatual', 'saldo', 'saldoestoque', 'qtdestoque', 'qest', 'est', 'estatual', 'quantidadeestoque'],
-      venda30d: ['venda30d', 'venda30dias', 'vendas30d', 'venda', 'vendas', 'saida', 'saidas', 'qtdvenda', 'qcom', 'vendames', 'giro'],
       custo: ['custo', 'custounit', 'custounitario', 'customedio', 'valor', 'valorunit', 'preco', 'precocusto', 'vuncom'],
       unPorCaixa: ['unporcaixa', 'unidadesporcaixa', 'unidporcaixa', 'uncx', 'uncaixa', 'unidcx', 'itensporcaixa', 'qtdcaixa', 'qtdporcaixa', 'qtdembalagem', 'embalagem', 'fatorconversao', 'fator', 'multiplo', 'caixacom']
     };
 
     const normalizarCabecalho = (v) => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
+    // ---------- Reconhecimento das colunas de venda ----------
+    // Aceita variações: "Vendas 3 meses", "Qtde Vendida", "Venda Ult. 90 dias", "Saídas", "Venda Jan/Fev/Mar",
+    // "Venda M-1", "Média Mensal", "VMD"... e ignora colunas de dinheiro ou data ("Preço Venda", "Valor Venda R$",
+    // "Data Últ. Venda", "Dias sem venda").
+    const MESES_NOMES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+    function classificarColunaVenda(bruto) {
+      const raw = String(bruto ?? '');
+      const sem = raw.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+      const n = sem.replace(/[^a-z0-9]/g, '');                         // compacto: "vendas3meses"
+      const t = ` ${sem.replace(/[^a-z0-9]+/g, ' ').trim()} `;          // com espaços: " vendas 3 meses "
+      if (!n || !/vend|saida|giro|consumo|qcom|demanda|vmd/.test(n)) return null;
+      if (/r\$|%/i.test(raw)) return null;
+      if (/preco|valor|fatur|receita|custo|margem|ticket|lucro|semvenda|ultimavenda|ultvenda|datavenda|dtvenda|^data|^dt|previs|meta|pedido|percent|particip|ranking|curva|abc|cobertura|vendedor|canal|tabela/.test(n)) return null;
+      if (/giro/.test(n) && /dia/.test(n) && !/\d/.test(n)) return null; // "Giro em dias"
+
+      if (/vmd|media|medio/.test(n)) return { tipo: /vmd|dia/.test(n.replace(/media|medio/g, '')) ? 'mediaDiaria' : 'mediaMensal' };
+
+      let m;
+      if (/trimestr|tresmes/.test(n)) return { tipo: 'periodo', meses: 3 };
+      if (/semestr/.test(n)) return { tipo: 'periodo', meses: 6 };
+      if (/semana/.test(n)) return { tipo: 'periodo', meses: 7 / 30 };
+      if ((m = t.match(/ (\d{1,3}) ?(?:mes|meses)\b/) || n.match(/(\d{1,3})mes/))) return { tipo: 'periodo', meses: Number(m[1]) };
+      if ((m = t.match(/ (\d{1,2}) ?m /) || n.match(/(\d{1,2})m$/))) return { tipo: 'periodo', meses: Number(m[1]) };
+      if ((m = t.match(/ (\d{1,3}) ?(?:d|dd|dia|dias)\b/) || n.match(/(\d{1,3})(?:d|dd|dia|dias)(?![a-z])/))) return { tipo: 'periodo', meses: Number(m[1]) / 30 };
+
+      // Mês relativo: "Venda M-1", "Venda M1", "Mês 2"
+      if ((m = t.match(/ m ?(\d{1,2}) /) || t.match(/ mes ?(\d{1,2}) /))) return { tipo: 'mesNomeado', ordemRel: Number(m[1]) };
+      // Mês pelo nome: "Venda Jan", "Vendas Setembro/24"
+      const tokens = t.trim().split(' ');
+      for (const tok of tokens) {
+        const idx = MESES_NOMES.findIndex(nome => new RegExp(`^${nome}[a-z]*\\d*$`).test(tok));
+        if (idx >= 0 && !/^(vend|saida|giro)/.test(tok)) return { tipo: 'mesNomeado', mesIdx: idx };
+      }
+      if (/ultimomes|mesatual|mensal|mesanterior/.test(n) || / mes /.test(t)) return { tipo: 'periodo', meses: 1 };
+      return { tipo: 'generico' };
+    }
+
+    // Colunas de meses em ordem do mais antigo para o mais recente
+    function ordenarMensais(lista) {
+      if (lista.length && lista.every(c => c.ordemRel != null)) return [...lista].sort((a, b) => b.ordemRel - a.ordemRel);
+      if (lista.length > 1 && lista.every(c => c.mesIdx != null)) {
+        const seq = lista.map(c => c.mesIdx);
+        const decrescente = seq.every((v, i) => i === 0 || (seq[i - 1] - v + 12) % 12 === 1);
+        return decrescente ? [...lista].reverse() : lista; // senão, assume colunas em ordem cronológica
+      }
+      return lista;
+    }
+
+    // Decide de quais colunas sai a venda do último mês e a média mensal dos 3 últimos meses
+    function detectarColunasVenda(cabecalho, usadas = new Set()) {
+      const cands = [];
+      cabecalho.forEach((h, idx) => {
+        if (usadas.has(idx)) return;
+        const c = classificarColunaVenda(h);
+        if (c) cands.push({ ...c, idx, nome: String(h).trim() });
+      });
+      if (!cands.length) return null;
+      const doTipo = (tp) => cands.filter(c => c.tipo === tp);
+      const periodos = doTipo('periodo');
+      const mensais = ordenarMensais(doTipo('mesNomeado'));
+      const fonte = (cols, fator) => ({ idxs: cols.map(c => c.idx), nomes: cols.map(c => c.nome), fator });
+
+      let mes = null;
+      const p1 = periodos.find(c => Math.abs(c.meses - 1) < 0.01);
+      const curto = periodos.filter(c => c.meses < 1).sort((a, b) => b.meses - a.meses)[0];
+      if (p1) mes = fonte([p1], 1);
+      else if (mensais.length) mes = fonte([mensais[mensais.length - 1]], 1);
+      else if (curto) mes = fonte([curto], 1 / curto.meses);
+      else if (doTipo('generico').length) mes = fonte([doTipo('generico')[0]], 1);
+
+      let media = null;
+      const p3 = periodos.find(c => c.meses === 3);
+      const longo = periodos.filter(c => c.meses > 1).sort((a, b) => Math.abs(a.meses - 3) - Math.abs(b.meses - 3))[0];
+      if (p3) media = fonte([p3], 1 / 3);
+      else if (mensais.length >= 2) { const ult = mensais.slice(-3); media = fonte(ult, 1 / ult.length); }
+      else if (longo) media = fonte([longo], 1 / longo.meses);
+      else if (doTipo('mediaMensal').length) media = fonte([doTipo('mediaMensal')[0]], 1);
+      else if (doTipo('mediaDiaria').length) media = fonte([doTipo('mediaDiaria')[0]], 30);
+
+      // Só tem média diária/mensal e nada do mês: usa a média como referência também
+      if (!mes && !media) return null;
+      return { mes, media };
+    }
+
+    const lerFonte = (f, valores) => f ? f.idxs.reduce((acc, i) => acc + parseNumero(valores[i]), 0) * f.fator : null;
+    const lerVendas = (det, valores) => ({
+      venda30d: det ? lerFonte(det.mes, valores) : null,
+      media3m: det ? lerFonte(det.media, valores) : null
+    });
+    const nomesVendas = (det) => ({
+      mes: det && det.mes ? det.mes.nomes : [],
+      media: det && det.media ? det.media.nomes : []
+    });
+
     // Descobre a posição de cada campo numa linha de cabeçalho
     function detectarColunas(linha) {
+      const vendas = detectarColunasVenda(linha);
       const cab = linha.map(normalizarCabecalho);
       const mapa = {};
-      const usadas = new Set();
+      const usadas = new Set(vendas ? [...(vendas.mes?.idxs || []), ...(vendas.media?.idxs || [])] : []);
       // 1ª passada: nome exato; 2ª passada: começa com o alias (ex.: "Estoque Atual (un)")
       for (const exato of [true, false]) {
         for (const [campo, aliases] of Object.entries(ALIASES_COLUNAS)) {
           if (campo in mapa) continue;
           for (const alias of aliases) {
-            const idx = cab.findIndex((c, i) => !usadas.has(i) && c && (exato ? c === alias : c.startsWith(alias)));
+            const idx = cab.findIndex((c, i) => !usadas.has(i) && c
+              && !(campo === 'custo' && /vend/.test(c))            // "Preço Venda" não é custo
+              && (exato ? c === alias : c.startsWith(alias)));
             if (idx >= 0) { mapa[campo] = idx; usadas.add(idx); break; }
           }
         }
       }
-      return mapa;
+      return { mapa, vendas };
     }
 
     // Converte linhas de uma tabela (CSV ou planilha) em itens.
@@ -734,15 +911,20 @@
       linhas = linhas.filter(l => l.some(c => String(c ?? '').trim() !== ''));
       let inicio = 1;
       let mapa = null;
+      let vendas = null;
       for (let i = 0; i < Math.min(10, linhas.length); i++) {
-        const m = detectarColunas(linhas[i]);
-        if (('sku' in m || 'descricao' in m) && ('estoque' in m || 'venda30d' in m)) {
-          mapa = m;
+        const d = detectarColunas(linhas[i]);
+        if (('sku' in d.mapa || 'descricao' in d.mapa) && ('estoque' in d.mapa || d.vendas)) {
+          ({ mapa, vendas } = d);
           inicio = i + 1;
           break;
         }
       }
-      if (!mapa) mapa = { loja: 0, sku: 1, descricao: 2, estoque: 3, venda30d: 4, custo: 5 };
+      if (!mapa) {
+        mapa = { loja: 0, sku: 1, descricao: 2, estoque: 3, custo: 5 };
+        vendas = { mes: { idxs: [4], nomes: ['5ª coluna'], fator: 1 }, media: null };
+      }
+      infoVendas = nomesVendas(vendas);
 
       const pegar = (l, campo) => (campo in mapa ? String(l[mapa[campo]] ?? '').trim() : '');
       return linhas.slice(inicio).map(l => ({
@@ -750,7 +932,7 @@
         sku: pegar(l, 'sku') || 'S/C',
         descricao: pegar(l, 'descricao') || 'Produto',
         estoque: parseNumero(pegar(l, 'estoque')),
-        venda30d: parseNumero(pegar(l, 'venda30d')),
+        ...lerVendas(vendas, l),
         custo: parseNumero(pegar(l, 'custo')),
         unPorCaixa: parseNumero(pegar(l, 'unPorCaixa'))
       })).filter(i => i.sku !== 'S/C' || i.descricao !== 'Produto');
@@ -784,7 +966,7 @@
       // Mapeia lojas em ruptura/crítico por SKU (para sugerir transferência na aba Baixo Giro)
       const rupturasPorSku = {};
       dadosBrutos.forEach(item => {
-        const vmd = item.venda30d / 30;
+        const vmd = vendaBaseDe(item) / 30;
         if (vmd <= 0) return;
         const cob = item.estoque / vmd;
         if (cob <= leadTime) {
@@ -802,9 +984,9 @@
         .map(itemOriginal => {
           // Quantidades ficam na unidade do item (unidade ou caixa); custo na mesma unidade
           const u = unidadeDoItem(itemOriginal);
-          const item = { ...itemOriginal, unidade: u.tipo, unPorCaixa: u.unPorCaixa };
+          const item = { ...itemOriginal, unidade: u.tipo, unPorCaixa: u.unPorCaixa, vendaBase: vendaBaseDe(itemOriginal) };
 
-          const vmdBase = item.venda30d / 30;
+          const vmdBase = item.vendaBase / 30;
           const vmdProjetada = vmdBase * fatorSazonal;
           // Cobertura considera a demanda projetada (simulador sazonal)
           const coberturaDias = vmdProjetada > 0 ? Math.round(item.estoque / vmdProjetada) : (item.estoque > 0 ? 999 : 0);
@@ -814,7 +996,7 @@
           let badgeClass = 'bg-emerald-100 text-emerald-800';
           let prioridade = 3;
 
-          if (item.estoque <= 0 && item.venda30d > 0) {
+          if (item.estoque <= 0 && item.vendaBase > 0) {
             status = 'RUPTURA';
             badgeClass = 'bg-red-600 text-white font-bold';
             prioridade = 1;
@@ -876,6 +1058,7 @@
 
       atualizarKPIs();
       renderizarTabelas();
+      renderizarBaseVenda();
     }
 
     function atualizarKPIs() {
@@ -914,7 +1097,7 @@
         return 'hover:bg-slate-50 border-l-4 border-l-transparent';
       };
       document.getElementById('tabelaSaudeBody').innerHTML = ordenadosSaude.length === 0
-        ? `<tr><td colspan="8" class="py-8 text-center text-slate-400">${soRepor ? 'Nenhum item precisa de reposição para os parâmetros atuais.' : 'Nenhum item encontrado para o filtro atual.'}</td></tr>`
+        ? `<tr><td colspan="9" class="py-8 text-center text-slate-400">${soRepor ? 'Nenhum item precisa de reposição para os parâmetros atuais.' : 'Nenhum item encontrado para o filtro atual.'}</td></tr>`
         : ordenadosSaude.map(i => `
         <tr class="${destaque(i)}">
           <td class="py-2.5 px-3 text-xs font-medium text-slate-600">${esc(i.loja)}</td>
@@ -924,7 +1107,8 @@
             ${i.precisaRepor ? `<span class="ml-1 inline-block align-middle text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${i.prioridade === 1 ? 'bg-red-600 text-white' : 'bg-amber-500 text-white'}">Repor</span>` : ''}
           </td>
           <td class="py-2.5 px-3 text-right font-semibold">${fmtQtd(i.estoque, i)}</td>
-          <td class="py-2.5 px-3 text-right text-slate-600">${fmtQtd(i.venda30d, i)}</td>
+          <td class="py-2.5 px-3 text-right ${baseEfetiva() === 'mes' ? 'font-semibold text-slate-800' : 'text-slate-500'}">${i.venda30d == null ? '—' : fmtQtd(i.venda30d, i)}</td>
+          <td class="py-2.5 px-3 text-right ${baseEfetiva() === 'media' ? 'font-semibold text-slate-800' : 'text-slate-500'}">${i.media3m == null ? '—' : fmtQtd(i.media3m, i)}</td>
           <td class="py-2.5 px-3 text-right text-slate-600">${i.vmdBase.toFixed(1)} ${siglaUn(i.unidade)}/dia</td>
           <td class="py-2.5 px-3 text-right font-semibold">${i.coberturaDias === 999 ? '∞' : i.coberturaDias + ' dias'}</td>
           <td class="py-2.5 px-3 text-center">
@@ -948,7 +1132,7 @@
               <span class="font-medium text-slate-800">${esc(i.descricao)}</span>
             </td>
             <td class="py-2.5 px-3 text-right font-semibold">${fmtQtd(i.estoque, i)}</td>
-            <td class="py-2.5 px-3 text-right text-slate-600">${fmtQtd(i.venda30d, i)}</td>
+            <td class="py-2.5 px-3 text-right text-slate-600">${fmtQtd(i.vendaBase, i)}</td>
             <td class="py-2.5 px-3 text-right font-semibold text-purple-700">${i.coberturaDias === 999 ? 'Sem saída' : i.coberturaDias + ' dias'}</td>
             <td class="py-2.5 px-3 text-right font-semibold text-slate-800">${fmtBRL(i.capitalParado)}</td>
             <td class="py-2.5 px-3">
@@ -969,9 +1153,9 @@
 
       const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
       const n = (v) => String(Math.round(v * 100) / 100).replace('.', ',');
-      let csv = '\uFEFFLoja;SKU;Produto;Unidade;Un por Caixa;Estoque Atual;Venda 30d;Cobertura (dias);Status\n';
+      let csv = '\uFEFFLoja;SKU;Produto;Unidade;Un por Caixa;Estoque Atual;Venda Ultimo Mes;Media 3 Meses;Base Usada;Cobertura (dias);Status\n';
       itens.forEach(i => {
-        csv += `${q(i.loja)};${q(i.sku)};${q(i.descricao)};${i.unidade === 'cx' ? 'Caixa' : 'Unidade'};${i.unPorCaixa > 1 ? i.unPorCaixa : ''};${n(i.estoque)};${n(i.venda30d)};${i.coberturaDias};${q(i.status)}\n`;
+        csv += `${q(i.loja)};${q(i.sku)};${q(i.descricao)};${i.unidade === 'cx' ? 'Caixa' : 'Unidade'};${i.unPorCaixa > 1 ? i.unPorCaixa : ''};${n(i.estoque)};${i.venda30d == null ? '' : n(i.venda30d)};${i.media3m == null ? '' : n(i.media3m)};${baseEfetiva() === 'media' ? 'Media 3 meses' : 'Ultimo mes'};${i.coberturaDias};${q(i.status)}\n`;
       });
 
       baixarArquivo(csv, 'text/csv;charset=utf-8;', 'itens-para-reposicao.csv');
@@ -1044,6 +1228,7 @@
     }
 
     renderizarUnidades();
+    renderizarBaseVenda();
   </script>
 </body>
 </html>

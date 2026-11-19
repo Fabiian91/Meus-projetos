@@ -15,6 +15,7 @@
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    [hidden] { display: none !important; }
     .tab-active { border-bottom: 2px solid #2563eb; color: #1d4ed8 !important; font-weight: 600; }
   </style>
 </head>
@@ -53,7 +54,7 @@
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
 
         <!-- Parâmetros Operacionais -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 flex-1">
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 flex-1">
           <div>
             <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Lead Time Entrega (Dias)</label>
             <input type="number" id="leadTimeInput" value="7" min="1" max="60" oninput="recalcularTudo()"
@@ -75,6 +76,16 @@
               <option value="TODAS">Todas as Lojas</option>
             </select>
             <span class="text-[11px] text-slate-400">Visão consolidada ou filial</span>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Unidade dos Dados</label>
+            <button type="button" onclick="abrirModalUnidade()"
+              class="w-full flex items-center justify-between gap-2 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+              <span id="resumoUnidade" class="truncate">Unidades</span>
+              <span class="text-xs font-medium text-blue-600">Alterar</span>
+            </button>
+            <span id="resumoUnidadeDetalhe" class="text-[11px] text-slate-400">Estoque e venda em unidades</span>
           </div>
         </div>
 
@@ -244,13 +255,141 @@
     </section>
   </main>
 
+  <!-- Modal: Unidade de Medida dos Dados -->
+  <div id="modalUnidade" hidden class="fixed inset-0 z-50 bg-slate-900/60 flex items-end sm:items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modalUnidadeTitulo">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md max-h-full overflow-y-auto p-5 space-y-4">
+      <div>
+        <h2 id="modalUnidadeTitulo" class="text-lg font-bold text-slate-900">Como estão os números do arquivo?</h2>
+        <p id="modalUnidadeOrigem" class="text-xs text-slate-500 mt-1">Confirme para o cálculo de cobertura e pedido ficar correto.</p>
+      </div>
+
+      <fieldset>
+        <legend class="text-xs font-semibold text-slate-600 uppercase mb-2">Estoque e venda estão em</legend>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="flex items-center gap-2 border border-slate-300 rounded-lg px-3 py-2.5 text-sm font-medium cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+            <input type="radio" name="baseUnidade" value="un" class="accent-blue-600" onchange="atualizarModalUnidade()" /> Unidades
+          </label>
+          <label class="flex items-center gap-2 border border-slate-300 rounded-lg px-3 py-2.5 text-sm font-medium cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+            <input type="radio" name="baseUnidade" value="cx" class="accent-blue-600" onchange="atualizarModalUnidade()" /> Caixas
+          </label>
+        </div>
+      </fieldset>
+
+      <div>
+        <label for="unPorCaixaInput" class="block text-xs font-semibold text-slate-600 uppercase mb-1">Unidades por caixa</label>
+        <input type="number" id="unPorCaixaInput" min="1" step="1" inputmode="numeric"
+          class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <span id="unPorCaixaAjuda" class="block text-[11px] text-slate-500 mt-1"></span>
+      </div>
+
+      <fieldset>
+        <legend class="text-xs font-semibold text-slate-600 uppercase mb-2">O custo informado é</legend>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="flex items-center gap-2 border border-slate-300 rounded-lg px-3 py-2.5 text-sm font-medium cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+            <input type="radio" name="custoPor" value="un" class="accent-blue-600" /> Por unidade
+          </label>
+          <label class="flex items-center gap-2 border border-slate-300 rounded-lg px-3 py-2.5 text-sm font-medium cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+            <input type="radio" name="custoPor" value="cx" class="accent-blue-600" /> Por caixa
+          </label>
+        </div>
+      </fieldset>
+
+      <p id="modalUnidadeErro" class="hidden text-xs font-medium text-red-600"></p>
+
+      <button type="button" onclick="confirmarUnidade()"
+        class="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition cursor-pointer">
+        Confirmar
+      </button>
+    </div>
+  </div>
+
   <script>
     let dadosBrutos = [];
     let dadosProcessados = [];
 
     // Formatação Moeda BRL
     const fmtBRL = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    const fmtNum = (v) => v.toLocaleString('pt-BR');
+    const fmtNum = (v) => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+
+    // Unidade de medida dos dados importados (perguntada a cada importação)
+    let configUnidade = { base: 'un', unPorCaixa: 1, custoPor: 'un' };
+    try {
+      const salvo = JSON.parse(localStorage.getItem('radarEstoque.unidade') || 'null');
+      if (salvo && ['un', 'cx'].includes(salvo.base) && ['un', 'cx'].includes(salvo.custoPor) && salvo.unPorCaixa >= 1) {
+        configUnidade = salvo;
+      }
+    } catch { /* armazenamento indisponível */ }
+
+    // Unidades por caixa do item: coluna do arquivo, senão o valor informado
+    const fatorCaixa = (item) => (item.unPorCaixa >= 1 ? item.unPorCaixa : configUnidade.unPorCaixa);
+
+    // Quantidade em unidades, com o equivalente em caixas abaixo (quando houver caixa)
+    const fmtQtd = (un, fator, sufixo = '') => fator > 1
+      ? `${fmtNum(un)}${sufixo}<span class="block text-[10px] font-normal text-slate-400">${fmtNum(un / fator)} cx</span>`
+      : `${fmtNum(un)}${sufixo}`;
+
+    function atualizarResumoUnidade() {
+      const { base, unPorCaixa, custoPor } = configUnidade;
+      const temColuna = dadosBrutos.some(i => i.unPorCaixa >= 1);
+      document.getElementById('resumoUnidade').textContent = base === 'cx' ? 'Caixas' : 'Unidades';
+      const emb = temColuna ? 'un/cx do arquivo' : (unPorCaixa > 1 ? `${unPorCaixa} un/cx` : 'sem caixa');
+      document.getElementById('resumoUnidadeDetalhe').textContent = `${emb} · custo por ${custoPor === 'cx' ? 'caixa' : 'unidade'}`;
+    }
+
+    let origemModalUnidade = '';
+    function abrirModalUnidade(origem) {
+      if (origem) origemModalUnidade = origem;
+      const modal = document.getElementById('modalUnidade');
+      document.querySelector(`input[name="baseUnidade"][value="${configUnidade.base}"]`).checked = true;
+      document.querySelector(`input[name="custoPor"][value="${configUnidade.custoPor}"]`).checked = true;
+      document.getElementById('unPorCaixaInput').value = configUnidade.unPorCaixa;
+      document.getElementById('modalUnidadeOrigem').textContent = origem
+        ? `Arquivo ${origem} importado com ${dadosBrutos.length} itens. Confirme a unidade para o cálculo de cobertura e pedido ficar correto.`
+        : 'Altere a unidade usada para interpretar estoque, venda e custo.';
+      document.getElementById('modalUnidadeErro').classList.add('hidden');
+      atualizarModalUnidade();
+      modal.hidden = false;
+      document.getElementById('unPorCaixaInput').focus();
+    }
+
+    function atualizarModalUnidade() {
+      const base = document.querySelector('input[name="baseUnidade"]:checked').value;
+      const qtdColuna = dadosBrutos.filter(i => i.unPorCaixa >= 1).length;
+      let ajuda = base === 'cx'
+        ? 'Obrigatório: usado para converter caixas em unidades.'
+        : 'Opcional: com mais de 1, o pedido é arredondado para caixa fechada. Deixe 1 para não arredondar.';
+      if (qtdColuna > 0) ajuda += ` O arquivo já informa a embalagem de ${qtdColuna} de ${dadosBrutos.length} itens; este valor vale para os demais.`;
+      document.getElementById('unPorCaixaAjuda').textContent = ajuda;
+    }
+
+    function confirmarUnidade() {
+      const base = document.querySelector('input[name="baseUnidade"]:checked').value;
+      const custoPor = document.querySelector('input[name="custoPor"]:checked').value;
+      const unPorCaixa = Math.floor(Number(document.getElementById('unPorCaixaInput').value));
+      const erro = document.getElementById('modalUnidadeErro');
+      const todosComColuna = dadosBrutos.length > 0 && dadosBrutos.every(i => i.unPorCaixa >= 1);
+
+      let msg = '';
+      if (!(unPorCaixa >= 1)) msg = 'Informe quantas unidades vêm em cada caixa (1 ou mais).';
+      else if ((base === 'cx' || custoPor === 'cx') && unPorCaixa < 2 && !todosComColuna) msg = 'Com dados ou custo por caixa, informe quantas unidades vêm em cada caixa (2 ou mais).';
+      if (msg) {
+        erro.textContent = msg;
+        erro.classList.remove('hidden');
+        return;
+      }
+
+      configUnidade = { base, unPorCaixa, custoPor };
+      try { localStorage.setItem('radarEstoque.unidade', JSON.stringify(configUnidade)); } catch { /* ignora */ }
+      document.getElementById('modalUnidade').hidden = true;
+      atualizarResumoUnidade();
+      recalcularTudo();
+    }
+
+    document.addEventListener('keydown', (e) => {
+      const modal = document.getElementById('modalUnidade');
+      if (modal.hidden) return;
+      if (e.key === 'Enter') { e.preventDefault(); confirmarUnidade(); }
+    });
 
     // Escapa texto vindo de arquivos importados antes de inserir no HTML
     const esc = (v) => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -356,7 +495,12 @@
         { loja: 'Loja 03 - Atacado Norte', sku: '7891003', descricao: 'Água de Coco Integral 1L', estoque: 35, venda30d: 540, custo: 6.80 },
         { loja: 'Loja 03 - Atacado Norte', sku: '7891005', descricao: 'Leite de Coco Culinário 500ml', estoque: 320, venda30d: 90, custo: 6.90 }
       ];
+      // Exemplo: dados em unidades, custo por unidade, embalagem por SKU
+      const embalagens = { '7891001': 24, '7891002': 24, '7891003': 12, '7891004': 12, '7891005': 12, '7891006': 20 };
+      dadosBrutos.forEach(i => { i.unPorCaixa = embalagens[i.sku] || 0; });
+      configUnidade = { base: 'un', unPorCaixa: 1, custoPor: 'un' };
       popularFiltroLojas();
+      atualizarResumoUnidade();
       recalcularTudo();
     }
 
@@ -381,7 +525,9 @@
       if (parsed.length === 0) throw new Error(`Nenhum item válido encontrado no ${origem}.`);
       dadosBrutos = parsed;
       popularFiltroLojas();
+      atualizarResumoUnidade();
       recalcularTudo();
+      abrirModalUnidade(origem);
     }
 
     // Upload e Parse de Excel / XML / PDF / CSV
@@ -442,7 +588,8 @@
         descricao: getVal(node, ['descricao', 'nome', 'produto', 'xProd']) || 'Produto sem descrição',
         estoque: parseNumero(getVal(node, ['estoque', 'saldo', 'qtd_estoque', 'qEst'])),
         venda30d: parseNumero(getVal(node, ['venda30d', 'venda', 'saida', 'qtd_venda', 'qCom'])),
-        custo: parseNumero(getVal(node, ['custo', 'valor', 'preco', 'vUnCom']))
+        custo: parseNumero(getVal(node, ['custo', 'valor', 'preco', 'vUnCom'])),
+        unPorCaixa: parseNumero(getVal(node, ['un_por_caixa', 'unPorCaixa', 'unidades_por_caixa', 'qtd_caixa', 'embalagem', 'fator', 'multiplo']))
       })).filter(i => i.sku !== 'S/C' || i.descricao !== 'Produto sem descrição');
 
       aplicarDadosImportados(parsed, 'XML');
@@ -537,7 +684,8 @@
       descricao: ['descricao', 'descricaoproduto', 'nome', 'nomeproduto', 'produto', 'xprod', 'desc', 'item'],
       estoque: ['estoque', 'estoqueatual', 'saldo', 'saldoestoque', 'qtdestoque', 'qest', 'est', 'estatual', 'quantidadeestoque'],
       venda30d: ['venda30d', 'venda30dias', 'vendas30d', 'venda', 'vendas', 'saida', 'saidas', 'qtdvenda', 'qcom', 'vendames', 'giro'],
-      custo: ['custo', 'custounit', 'custounitario', 'customedio', 'valor', 'valorunit', 'preco', 'precocusto', 'vuncom']
+      custo: ['custo', 'custounit', 'custounitario', 'customedio', 'valor', 'valorunit', 'preco', 'precocusto', 'vuncom'],
+      unPorCaixa: ['unporcaixa', 'unidadesporcaixa', 'unidporcaixa', 'uncx', 'uncaixa', 'unidcx', 'itensporcaixa', 'qtdcaixa', 'qtdporcaixa', 'qtdembalagem', 'embalagem', 'fatorconversao', 'fator', 'multiplo', 'caixacom']
     };
 
     const normalizarCabecalho = (v) => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -584,7 +732,8 @@
         descricao: pegar(l, 'descricao') || 'Produto',
         estoque: parseNumero(pegar(l, 'estoque')),
         venda30d: parseNumero(pegar(l, 'venda30d')),
-        custo: parseNumero(pegar(l, 'custo'))
+        custo: parseNumero(pegar(l, 'custo')),
+        unPorCaixa: parseNumero(pegar(l, 'unPorCaixa'))
       })).filter(i => i.sku !== 'S/C' || i.descricao !== 'Produto');
     }
 
@@ -631,7 +780,20 @@
       dadosProcessados = dadosBrutos
         .filter(item => lojaSelecionada === 'TODAS' || item.loja === lojaSelecionada)
         .filter(item => !termoBusca || String(item.sku).toLowerCase().includes(termoBusca) || String(item.descricao).toLowerCase().includes(termoBusca))
-        .map(item => {
+        .map(itemOriginal => {
+          // Converte tudo para unidades conforme a unidade informada pelo usuário
+          const fator = fatorCaixa(itemOriginal);
+          const mult = configUnidade.base === 'cx' ? fator : 1;
+          const item = {
+            ...itemOriginal,
+            unPorCaixa: fator,
+            estoque: itemOriginal.estoque * mult,
+            venda30d: itemOriginal.venda30d * mult,
+            custo: configUnidade.custoPor === 'cx' ? itemOriginal.custo / fator : itemOriginal.custo
+          };
+          // Arredonda para caixa fechada quando há embalagem
+          const emCaixa = (qtd) => fator > 1 ? Math.ceil(qtd / fator) * fator : qtd;
+
           const vmdBase = item.venda30d / 30;
           const vmdProjetada = vmdBase * fatorSazonal;
           const coberturaDias = vmdBase > 0 ? Math.round(item.estoque / vmdBase) : (item.estoque > 0 ? 999 : 0);
@@ -669,8 +831,9 @@
 
           // Cálculo de Pedido Sugerido
           const estoqueUtil = Math.max(0, item.estoque);
-          const reqBase = Math.max(0, Math.ceil((vmdBase * coberturaAlvo) - estoqueUtil));
-          const pedidoSugerido = Math.max(0, Math.ceil((vmdProjetada * coberturaAlvo) - estoqueUtil));
+          const reqBase = emCaixa(Math.max(0, Math.ceil((vmdBase * coberturaAlvo) - estoqueUtil)));
+          const pedidoSugerido = emCaixa(Math.max(0, Math.ceil((vmdProjetada * coberturaAlvo) - estoqueUtil)));
+          const caixasPedido = fator > 1 ? pedidoSugerido / fator : 0;
           const pulmaoSazonal = Math.max(0, pedidoSugerido - reqBase);
           const valorPedido = pedidoSugerido * item.custo;
 
@@ -701,6 +864,7 @@
             reqBase,
             pulmaoSazonal,
             pedidoSugerido,
+            caixasPedido,
             valorPedido,
             excessoUn,
             capitalParado,
@@ -743,7 +907,7 @@
           <td class="py-2.5 px-3 text-xs font-medium text-slate-600">${esc(i.loja)}</td>
           <td class="py-2.5 px-3 font-mono text-xs text-slate-500">${esc(i.sku)}</td>
           <td class="py-2.5 px-3 font-medium text-slate-800">${esc(i.descricao)}</td>
-          <td class="py-2.5 px-3 text-right font-semibold">${fmtNum(i.estoque)}</td>
+          <td class="py-2.5 px-3 text-right font-semibold">${fmtQtd(i.estoque, i.unPorCaixa)}</td>
           <td class="py-2.5 px-3 text-right text-slate-600">${fmtNum(i.venda30d)}</td>
           <td class="py-2.5 px-3 text-right text-slate-600">${i.vmdBase.toFixed(1)}/dia</td>
           <td class="py-2.5 px-3 text-right font-semibold">${i.coberturaDias === 999 ? '∞' : i.coberturaDias + ' dias'}</td>
@@ -764,10 +928,10 @@
               <span class="font-mono text-xs text-slate-400 mr-1">${esc(i.sku)}</span>
               <span class="font-medium text-slate-800">${esc(i.descricao)}</span>
             </td>
-            <td class="py-2.5 px-3 text-right text-slate-600">${fmtNum(i.estoque)}</td>
+            <td class="py-2.5 px-3 text-right text-slate-600">${fmtQtd(i.estoque, i.unPorCaixa)}</td>
             <td class="py-2.5 px-3 text-right text-slate-700">${fmtNum(i.reqBase)}</td>
             <td class="py-2.5 px-3 text-right font-medium text-amber-700">+${fmtNum(i.pulmaoSazonal)}</td>
-            <td class="py-2.5 px-3 text-right font-bold text-blue-700">${fmtNum(i.pedidoSugerido)} un.</td>
+            <td class="py-2.5 px-3 text-right font-bold text-blue-700">${fmtQtd(i.pedidoSugerido, i.unPorCaixa, ' un.')}</td>
             <td class="py-2.5 px-3 text-right font-medium text-slate-700">${fmtBRL(i.valorPedido)}</td>
           </tr>
         `).join('');
@@ -783,7 +947,7 @@
               <span class="font-mono text-xs text-slate-400 mr-1">${esc(i.sku)}</span>
               <span class="font-medium text-slate-800">${esc(i.descricao)}</span>
             </td>
-            <td class="py-2.5 px-3 text-right font-semibold">${fmtNum(i.estoque)}</td>
+            <td class="py-2.5 px-3 text-right font-semibold">${fmtQtd(i.estoque, i.unPorCaixa)}</td>
             <td class="py-2.5 px-3 text-right text-slate-600">${fmtNum(i.venda30d)}</td>
             <td class="py-2.5 px-3 text-right font-semibold text-purple-700">${i.coberturaDias === 999 ? 'Sem saída' : i.coberturaDias + ' dias'}</td>
             <td class="py-2.5 px-3 text-right font-semibold text-slate-800">${fmtBRL(i.capitalParado)}</td>
@@ -800,9 +964,10 @@
       if (itens.length === 0) return alert('Não há itens na sugestão de pedido para exportar.');
 
       const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
-      let csv = '﻿Loja;SKU;Produto;Estoque Atual;Reposicao Base;Pulmao Sazonal;Pedido Sugerido;Valor Estimado\n';
+      let csv = '﻿Loja;SKU;Produto;Estoque Atual;Reposicao Base;Pulmao Sazonal;Pedido Sugerido (un);Un por Caixa;Pedido (caixas);Valor Estimado\n';
+      const n = (v) => String(Math.round(v * 100) / 100).replace('.', ',');
       itens.forEach(i => {
-        csv += `${q(i.loja)};${q(i.sku)};${q(i.descricao)};${i.estoque};${i.reqBase};${i.pulmaoSazonal};${i.pedidoSugerido};${q(i.valorPedido.toFixed(2).replace('.', ','))}\n`;
+        csv += `${q(i.loja)};${q(i.sku)};${q(i.descricao)};${n(i.estoque)};${i.reqBase};${i.pulmaoSazonal};${i.pedidoSugerido};${i.unPorCaixa > 1 ? i.unPorCaixa : ''};${i.unPorCaixa > 1 ? i.caixasPedido : ''};${q(i.valorPedido.toFixed(2).replace('.', ','))}\n`;
       });
 
       baixarArquivo(csv, 'text/csv;charset=utf-8;', 'sugestao-pedido-reposicao.csv');
@@ -820,7 +985,7 @@
       let texto = `*SUGESTÃO DE PEDIDO & REPOSIÇÃO*\n`;
       texto += `Cenário Sazonal: +${sazonal}% | Volume Total: ${fmtNum(totalUn)} un. (${fmtBRL(totalVal)})\n\n`;
       itens.slice(0, 15).forEach(i => {
-        texto += `• [${i.loja}] ${i.descricao} (SKU ${i.sku}): *+${fmtNum(i.pedidoSugerido)} un.* (Est. atual: ${i.estoque})\n`;
+        texto += `• [${i.loja}] ${i.descricao} (SKU ${i.sku}): *+${i.unPorCaixa > 1 ? `${fmtNum(i.caixasPedido)} cx (${fmtNum(i.pedidoSugerido)} un.)` : `${fmtNum(i.pedidoSugerido)} un.`}* (Est. atual: ${fmtNum(i.estoque)} un.)\n`;
       });
       if (itens.length > 15) texto += `... e mais ${itens.length - 15} itens na planilha completa.`;
 

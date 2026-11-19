@@ -6,6 +6,7 @@
   <title>Radar de Estoque & Reposição B2B</title>
   <script src="https://cdn.tailwindcss.com/3.4.16"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script>
     if (window.pdfjsLib) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -38,8 +39,8 @@
           Baixar XML Modelo
         </button>
         <label class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow-sm cursor-pointer">
-          Importar XML / PDF / CSV
-          <input type="file" id="fileInput" accept=".xml,.pdf,.csv" class="hidden" onchange="handleFileUpload(event)" />
+          Importar Excel / XML / PDF / CSV
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.xml,.pdf,.csv" class="hidden" onchange="handleFileUpload(event)" />
         </label>
       </div>
     </div>
@@ -174,7 +175,7 @@
             <tbody id="tabelaSaudeBody" class="divide-y divide-slate-100 text-sm">
               <tr>
                 <td colspan="8" class="py-10 text-center text-slate-400">
-                  Importe um arquivo <strong>XML / PDF / CSV</strong> ou clique em <strong>"Carregar Dados de Exemplo"</strong> acima.
+                  Importe um arquivo <strong>Excel / XML / PDF / CSV</strong> ou clique em <strong>"Carregar Dados de Exemplo"</strong> acima.
                 </td>
               </tr>
             </tbody>
@@ -259,6 +260,7 @@
       let s = String(v ?? '').trim().replace(/[^\d,.\-]/g, '');
       if (!s) return 0;
       if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+      else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, ''); // "1.200" = mil e duzentos
       const n = parseFloat(s);
       return Number.isFinite(n) ? n : 0;
     }
@@ -382,7 +384,7 @@
       recalcularTudo();
     }
 
-    // Upload e Parse de XML / PDF / CSV
+    // Upload e Parse de Excel / XML / PDF / CSV
     async function handleFileUpload(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -393,10 +395,12 @@
           parseXML(await file.text());
         } else if (ext === 'pdf') {
           await parsePDF(file);
+        } else if (ext === 'xlsx' || ext === 'xls') {
+          await parseXLSX(file);
         } else if (ext === 'csv') {
           parseCSV(await file.text());
         } else {
-          alert('Formato não suportado. Utilize XML, PDF ou CSV.');
+          alert('Formato não suportado. Utilize Excel (.xlsx), XML, PDF ou CSV.');
         }
       } catch (err) {
         console.error(err);
@@ -522,19 +526,79 @@
     function parseCSV(text) {
       const linhasTodas = text.replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
       const sep = linhasTodas[0] && linhasTodas[0].includes(';') ? ';' : ',';
-      const parsed = linhasTodas.slice(1).map(l => {
-        const c = dividirLinhaCSV(l, sep);
-        return {
-          loja: c[0] || 'Matriz',
-          sku: c[1] || 'S/C',
-          descricao: c[2] || 'Produto',
-          estoque: parseNumero(c[3]),
-          venda30d: parseNumero(c[4]),
-          custo: parseNumero(c[5])
-        };
-      }).filter(i => i.sku !== 'S/C');
+      const linhas = linhasTodas.map(l => dividirLinhaCSV(l, sep));
+      aplicarDadosImportados(mapearLinhasTabela(linhas), 'CSV');
+    }
 
-      aplicarDadosImportados(parsed, 'CSV');
+    // Nomes de coluna aceitos (comparados sem acento, maiúsculas, espaços ou símbolos)
+    const ALIASES_COLUNAS = {
+      loja: ['loja', 'filial', 'unidade', 'cd', 'nomeloja', 'pdv'],
+      sku: ['sku', 'codigo', 'cod', 'ean', 'cprod', 'codproduto', 'codigoproduto', 'codigointerno', 'gtin', 'referencia', 'ref'],
+      descricao: ['descricao', 'descricaoproduto', 'nome', 'nomeproduto', 'produto', 'xprod', 'desc', 'item'],
+      estoque: ['estoque', 'estoqueatual', 'saldo', 'saldoestoque', 'qtdestoque', 'qest', 'est', 'estatual', 'quantidadeestoque'],
+      venda30d: ['venda30d', 'venda30dias', 'vendas30d', 'venda', 'vendas', 'saida', 'saidas', 'qtdvenda', 'qcom', 'vendames', 'giro'],
+      custo: ['custo', 'custounit', 'custounitario', 'customedio', 'valor', 'valorunit', 'preco', 'precocusto', 'vuncom']
+    };
+
+    const normalizarCabecalho = (v) => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // Descobre a posição de cada campo numa linha de cabeçalho
+    function detectarColunas(linha) {
+      const cab = linha.map(normalizarCabecalho);
+      const mapa = {};
+      const usadas = new Set();
+      // 1ª passada: nome exato; 2ª passada: começa com o alias (ex.: "Estoque Atual (un)")
+      for (const exato of [true, false]) {
+        for (const [campo, aliases] of Object.entries(ALIASES_COLUNAS)) {
+          if (campo in mapa) continue;
+          for (const alias of aliases) {
+            const idx = cab.findIndex((c, i) => !usadas.has(i) && c && (exato ? c === alias : c.startsWith(alias)));
+            if (idx >= 0) { mapa[campo] = idx; usadas.add(idx); break; }
+          }
+        }
+      }
+      return mapa;
+    }
+
+    // Converte linhas de uma tabela (CSV ou planilha) em itens.
+    // Usa o cabeçalho se reconhecer as colunas; senão, a ordem padrão:
+    // Loja | SKU | Descrição | Estoque | Venda 30d | Custo
+    function mapearLinhasTabela(linhas) {
+      linhas = linhas.filter(l => l.some(c => String(c ?? '').trim() !== ''));
+      let inicio = 1;
+      let mapa = null;
+      for (let i = 0; i < Math.min(10, linhas.length); i++) {
+        const m = detectarColunas(linhas[i]);
+        if (('sku' in m || 'descricao' in m) && ('estoque' in m || 'venda30d' in m)) {
+          mapa = m;
+          inicio = i + 1;
+          break;
+        }
+      }
+      if (!mapa) mapa = { loja: 0, sku: 1, descricao: 2, estoque: 3, venda30d: 4, custo: 5 };
+
+      const pegar = (l, campo) => (campo in mapa ? String(l[mapa[campo]] ?? '').trim() : '');
+      return linhas.slice(inicio).map(l => ({
+        loja: pegar(l, 'loja') || 'Matriz',
+        sku: pegar(l, 'sku') || 'S/C',
+        descricao: pegar(l, 'descricao') || 'Produto',
+        estoque: parseNumero(pegar(l, 'estoque')),
+        venda30d: parseNumero(pegar(l, 'venda30d')),
+        custo: parseNumero(pegar(l, 'custo'))
+      })).filter(i => i.sku !== 'S/C' || i.descricao !== 'Produto');
+    }
+
+    // Leitor de planilhas Excel (.xlsx / .xls) via SheetJS
+    async function parseXLSX(file) {
+      if (!window.XLSX) throw new Error('Leitor de Excel não carregou (verifique a conexão).');
+      const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      // Usa a primeira aba que tiver itens reconhecíveis
+      for (const nome of wb.SheetNames) {
+        const linhas = XLSX.utils.sheet_to_json(wb.Sheets[nome], { header: 1, raw: true, defval: '' });
+        const parsed = mapearLinhasTabela(linhas);
+        if (parsed.length > 0) return aplicarDadosImportados(parsed, 'Excel');
+      }
+      throw new Error('Nenhum item válido encontrado na planilha. Verifique se há colunas de SKU/Produto, Estoque e Venda.');
     }
 
     // Motor Principal de Cálculo

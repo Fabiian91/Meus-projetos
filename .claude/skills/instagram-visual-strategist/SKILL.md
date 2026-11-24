@@ -40,9 +40,13 @@ Entregue a produção dividida em **3 Blocos Obrigatórios**:
 ### Bloco 1: Arquitetura de Retenção (Roteiro Slide a Slide)
 Estruture de 5 a 10 slides (ou cenas de Reels 9:16) seguindo a curva de retenção:
 - **Slide 1 (Capa - O Gancho):** Promessa forte + curiosidade + instrução visual de quebra de padrão.
-- **Slide 2 (O Contexto / Agitação):** Validação imediata do clique nos primeiros 2 segundos de leitura.
+- **Slide 2 (Segunda Capa Independente):** Validação imediata do clique nos primeiros 2 segundos de leitura **e** funcionar sozinho como capa, porque o Instagram reentrega o carrossel começando pelo Slide 2. Precisa de gancho próprio, título legível sem o Slide 1 e visual de capa. Veja as Regras Fixas de Algoritmo em `style_bible.md`.
 - **Slides 3 a N-1 (Desenvolvimento em Micro-Doses):** 1 ideia central por slide. Inclua a instrução de *Continuidade Visual* entre um slide e outro.
 - **Slide Final (Fechamento + CTA de Salvamento):** Resumo acionável + motivo claro para salvar/enviar.
+
+**Para Reels de arte/ilustração (9:16), adicionalmente:**
+- **Mudança de estímulo a cada 2,5–3,5s:** marque a minutagem de cada cena (ex: `00:00–00:03`) e indique o estímulo (zoom lento, entrada de elemento gráfico, troca de cena). Nenhum plano estático passa de 3,5s.
+- **Loop infinito:** a última frase da narração/texto deve se conectar gramaticalmente à primeira, para o fim emendar no começo sem corte perceptível. Escreva as duas frases lado a lado para validar.
 
 ### Bloco 2: Prompts de Ilustração (Prontos para Geradores de Imagem)
 Para cada slide/cena, gere um prompt técnico detalhado (em inglês, otimizado para FLUX.1 / Midjourney / Ideogram) contendo:
